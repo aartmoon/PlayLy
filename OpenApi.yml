@@ -1,0 +1,988 @@
+openapi: 3.0.3
+info:
+  title: PlayLy Core API
+  version: 0.1.0
+  description: |
+    HTTP API мобильной платформы ПлейЛи для создания, редактирования,
+    публикации и запуска 2D-игр с помощью текстовых запросов.
+
+    Основа контракта — функциональное описание и обсуждённая архитектура PlayLy.
+    Маршруты, поля, ограничения и способ авторизации предложены в этом документе
+    как проектные решения: отдельной детальной спецификации API в репозитории нет.
+    Аутентификация предполагает внешний поставщик Bearer access token;
+    выдача и обновление токенов находятся за пределами этого контракта.
+
+    Android обращается к Core по HTTPS. Core асинхронно передаёт задания
+    AI-сервису через Kafka (generation.request / generation.result).
+    AI-сервис обращается к LLM по HTTPS и сохраняет GameSpec и ресурсы в MinIO.
+    Kafka и внутренний AI-сервис не предоставляют публичный HTTP API.
+
+    Генерация возвращает 202 и идентификатор задания. Клиент опрашивает его статус.
+    Результат успешной генерации — новая неизменяемая версия игры.
+    Игра исполняется встроенным Android runtime из game.json и ресурсов,
+    а не как произвольный сгенерированный исполняемый код.
+
+    Публикация закрепляет конкретную готовую версию. Новые генерации не меняют
+    опубликованную версию до явной повторной публикации. Владелец видит свои
+    черновики и версии; остальные пользователи — только опубликованную версию.
+    Все даты указаны в UTC в формате RFC 3339. Идентификаторы — UUID.
+servers:
+  - url: /api/v1
+    description: Core API текущего окружения
+tags:
+  - name: Profile
+    description: Профиль текущего пользователя
+  - name: Games
+    description: Создание игр и управление метаданными
+  - name: Generations
+    description: Асинхронная генерация и изменение игр
+  - name: Versions
+    description: Неизменяемые версии и пакеты для запуска
+  - name: Publications
+    description: Публикация и снятие с публикации
+  - name: Catalog
+    description: Общий каталог опубликованных игр
+  - name: Ratings
+    description: Оценки опубликованных игр
+security:
+  - bearerAuth: []
+paths:
+  /me:
+    get:
+      tags: [Profile]
+      operationId: getCurrentUser
+      summary: Получить свой профиль
+      responses:
+        '200':
+          description: Текущий пользователь
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /me/games:
+    get:
+      tags: [Games]
+      operationId: listMyGames
+      summary: Получить свои игры, включая черновики
+      description: Сортировка по updatedAt DESC, id DESC; курсор непрозрачный.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Страница игр текущего пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GamePage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /games:
+    post:
+      tags: [Games]
+      operationId: createGame
+      summary: Создать черновик игры
+      description: Создаёт метаданные без версии. Для генерации нужен отдельный запрос.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GameMetadata'
+      responses:
+        '201':
+          description: Черновик создан
+          headers:
+            Location:
+              description: Относительный URL созданной игры
+              schema:
+                type: string
+              example: /api/v1/games/79db9104-63b2-4dc9-9b32-1d8c891b4861
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Game'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /games/{gameId}:
+    parameters:
+      - $ref: '#/components/parameters/GameId'
+    get:
+      tags: [Games]
+      operationId: getGame
+      summary: Получить карточку игры
+      description: Владелец видит черновик; другие пользователи — опубликованную игру.
+      responses:
+        '200':
+          description: Карточка игры
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Game'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+    put:
+      tags: [Games]
+      operationId: updateGameMetadata
+      summary: Заменить название и описание своей игры
+      description: Меняет метаданные, не затрагивая GameSpec и опубликованную версию.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GameMetadata'
+      responses:
+        '200':
+          description: Метаданные обновлены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Game'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+    delete:
+      tags: [Games]
+      operationId: deleteGame
+      summary: Удалить свою игру
+      description: |
+        Удаляет игру из профиля и каталога. Пока у игры есть незавершённое
+        задание генерации, возвращает 409. Повторное удаление возвращает 404.
+        Уже выданные ссылки на пакет могут действовать до истечения срока.
+      responses:
+        '204':
+          description: Игра удалена
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /games/{gameId}/generations:
+    parameters:
+      - $ref: '#/components/parameters/GameId'
+    post:
+      tags: [Generations]
+      operationId: createGeneration
+      summary: Сгенерировать игру или изменить существующую версию
+      description: |
+        Только для владельца. Без baseVersionId создаёт игру по prompt с нуля;
+        с baseVersionId изменяет указанную версию этой же игры.
+        Принятие задания означает сохранение его и надёжную постановку на
+        асинхронную обработку (например, через transactional outbox).
+        Сбой Kafka после ответа не должен терять принятое задание.
+
+        Idempotency-Key обязателен. Область ключа — пользователь и эта операция
+        для конкретной игры; срок хранения результата — минимум 24 часа.
+        Повтор с тем же телом возвращает 202 с тем же заданием, даже если оно
+        уже завершено. Повтор с другим телом возвращает 409.
+        Одновременно допускается одно незавершённое задание на игру;
+        другое новое задание в это время возвращает 409.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerationRequest'
+            examples:
+              create:
+                summary: Создать игру с нуля
+                value:
+                  prompt: Создай тетрис с управлением свайпами
+              edit:
+                summary: Изменить готовую версию
+                value:
+                  prompt: Замени блоки на песок
+                  baseVersionId: a0de9c6f-181b-439b-8a11-0440b389ad56
+      responses:
+        '202':
+          description: Задание принято или найдено по ключу идемпотентности
+          headers:
+            Location:
+              description: URL для опроса задания
+              schema:
+                type: string
+              example: /api/v1/generations/220f5632-6358-43dd-a5f4-77e0415c48be
+            Retry-After:
+              description: Рекомендуемый интервал опроса в секундах
+              schema:
+                type: integer
+                minimum: 1
+              example: 3
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Generation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+    get:
+      tags: [Generations]
+      operationId: listGameGenerations
+      summary: Получить историю генераций своей игры
+      description: Только для владельца. Сортировка по createdAt DESC, id DESC.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Страница заданий
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /generations/{generationId}:
+    get:
+      tags: [Generations]
+      operationId: getGeneration
+      summary: Получить состояние генерации
+      description: |
+        Только для владельца. Переходы QUEUED → RUNNING → SUCCEEDED или FAILED;
+        допускается QUEUED → FAILED. Терминальные статусы не меняются.
+        SUCCEEDED означает, что пакет сохранён и версия доступна через Core.
+      parameters:
+        - name: generationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Текущее состояние задания
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Generation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /games/{gameId}/versions:
+    parameters:
+      - $ref: '#/components/parameters/GameId'
+    get:
+      tags: [Versions]
+      operationId: listGameVersions
+      summary: Получить историю версий своей игры
+      description: Только для владельца. Сортировка по number DESC.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Страница готовых версий
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /games/{gameId}/versions/{versionId}:
+    parameters:
+      - $ref: '#/components/parameters/GameId'
+      - $ref: '#/components/parameters/VersionId'
+    get:
+      tags: [Versions]
+      operationId: getGameVersion
+      summary: Получить метаданные версии
+      description: |
+        Владелец видит любую версию своей игры. Остальные пользователи могут
+        получить только текущую опубликованную версию. Несоответствие версии
+        игре или отсутствие доступа возвращает 404.
+      responses:
+        '200':
+          description: Метаданные версии
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GameVersion'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /games/{gameId}/versions/{versionId}/package:
+    parameters:
+      - $ref: '#/components/parameters/GameId'
+      - $ref: '#/components/parameters/VersionId'
+    get:
+      tags: [Versions]
+      operationId: getGamePackage
+      summary: Получить ссылки на GameSpec и ресурсы для запуска
+      description: |
+        Доступ как для getGameVersion. Возвращает временные HTTPS GET URL
+        к game.json и ресурсам в MinIO. Клиент скачивает файлы напрямую,
+        проверяет SHA-256 и запускает GameSpec во встроенном runtime.
+        Пути ресурсов внутри GameSpec соответствуют полю path в assets.
+        Секреты MinIO не передаются. После истечения ссылок клиент повторяет запрос.
+        Схема самого GameSpec версионируется отдельно от HTTP API.
+      responses:
+        '200':
+          description: Манифест скачивания пакета
+          headers:
+            Cache-Control:
+              description: Временные ссылки нельзя сохранять в общих кешах
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GamePackage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /games/{gameId}/publication:
+    parameters:
+      - $ref: '#/components/parameters/GameId'
+    put:
+      tags: [Publications]
+      operationId: publishGame
+      summary: Опубликовать готовую версию своей игры
+      description: |
+        Создаёт или заменяет публикацию. versionId должен принадлежать этой игре.
+        Повтор с тем же versionId возвращает текущую публикацию, не меняя publishedAt.
+        Игра становится доступна в общем каталоге.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [versionId]
+              properties:
+                versionId:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Версия опубликована
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Publication'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+    delete:
+      tags: [Publications]
+      operationId: unpublishGame
+      summary: Снять свою игру с публикации
+      description: |
+        Игра и версии остаются у владельца, игра исчезает из каталога.
+        Повторный запрос для своей неопубликованной игры также возвращает 204.
+        Уже выданные ссылки могут действовать до истечения срока.
+      responses:
+        '204':
+          description: Публикация отсутствует
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /catalog/games:
+    get:
+      tags: [Catalog]
+      operationId: listCatalogGames
+      summary: Найти опубликованные игры
+      description: |
+        Поиск без учёта регистра по названию и описанию.
+        Сортировка по publishedAt DESC, id DESC. Курсор привязан к строке q.
+        Для запуска клиент берёт versionId из publication карточки игры.
+      parameters:
+        - name: q
+          in: query
+          description: Необязательная строка поиска
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Страница опубликованных игр
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GamePage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /games/{gameId}/rating:
+    parameters:
+      - $ref: '#/components/parameters/GameId'
+    get:
+      tags: [Ratings]
+      operationId: getMyRating
+      summary: Получить свою оценку опубликованной игры
+      responses:
+        '200':
+          description: Оценка пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rating'
+        '204':
+          description: Пользователь ещё не оценил эту игру
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+    put:
+      tags: [Ratings]
+      operationId: rateGame
+      summary: Поставить или заменить свою оценку
+      description: |
+        Одна оценка на пользователя и игру, от 1 до 5. Оценка относится к игре,
+        сохраняется при публикации новой версии. Игра должна быть опубликована.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [score]
+              properties:
+                score:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+      responses:
+        '200':
+          description: Оценка сохранена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rating'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+    delete:
+      tags: [Ratings]
+      operationId: deleteMyRating
+      summary: Удалить свою оценку опубликованной игры
+      description: Если оценки уже нет, также возвращает 204.
+      responses:
+        '204':
+          description: Оценка отсутствует
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Access token внешнего поставщика аутентификации
+  parameters:
+    GameId:
+      name: gameId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    VersionId:
+      name: versionId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Cursor:
+      name: cursor
+      in: query
+      description: Непрозрачный nextCursor из предыдущей страницы; неверный курсор даёт 400
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 2048
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Уникальный ключ запроса, например UUID; повтор используется при сетевом сбое
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+  responses:
+    BadRequest:
+      description: Некорректные параметры, JSON или значения полей
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: Access token отсутствует, недействителен или истёк
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+          example: Bearer
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: Ресурс не найден или недоступен текущему пользователю
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: Конфликт ключа идемпотентности или незавершённая генерация
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    TooManyRequests:
+      description: Превышен лимит запросов генерации
+      headers:
+        Retry-After:
+          description: Время до повторного запроса в секундах
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    UnexpectedError:
+      description: Непредвиденная ошибка; HTTP-статус совпадает с полем status
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    User:
+      type: object
+      required: [id, displayName, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        createdAt:
+          type: string
+          format: date-time
+    GameMetadata:
+      type: object
+      additionalProperties: false
+      required: [title, description]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 120
+          pattern: '\S'
+          example: Песочный тетрис
+        description:
+          type: string
+          maxLength: 2000
+          example: Тетрис, в котором блоки рассыпаются в песок
+    Game:
+      type: object
+      required: [id, ownerId, title, description, status, publication, rating, createdAt, updatedAt]
+      description: |
+        status=PUBLISHED тогда и только тогда, когда publication не null.
+        DRAFT обозначает любую неопубликованную игру, в том числе с готовыми версиями.
+      properties:
+        id:
+          type: string
+          format: uuid
+        ownerId:
+          type: string
+          format: uuid
+        title:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 2000
+        status:
+          type: string
+          enum: [DRAFT, PUBLISHED]
+        publication:
+          type: object
+          nullable: true
+          description: Текущая публикация; null у неопубликованной игры
+          required: [gameId, versionId, publishedAt]
+          properties:
+            gameId:
+              type: string
+              format: uuid
+            versionId:
+              type: string
+              format: uuid
+            publishedAt:
+              type: string
+              format: date-time
+        rating:
+          $ref: '#/components/schemas/RatingSummary'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    GenerationRequest:
+      type: object
+      additionalProperties: false
+      required: [prompt]
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          pattern: '\S'
+          description: Описание новой игры или изменений на естественном языке
+        baseVersionId:
+          type: string
+          format: uuid
+          description: Версия этой игры для изменения; при генерации с нуля поле отсутствует
+    Generation:
+      type: object
+      required: [id, gameId, prompt, status, createdAt, updatedAt]
+      description: |
+        resultVersionId обязателен только при SUCCEEDED; error — только при FAILED.
+        При остальных статусах эти поля отсутствуют. baseVersionId присутствует
+        только у задания редактирования. finishedAt есть только у терминального статуса.
+      properties:
+        id:
+          type: string
+          format: uuid
+        gameId:
+          type: string
+          format: uuid
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 10000
+        baseVersionId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [QUEUED, RUNNING, SUCCEEDED, FAILED]
+        resultVersionId:
+          type: string
+          format: uuid
+        error:
+          $ref: '#/components/schemas/GenerationError'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+    GenerationError:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [LLM_UNAVAILABLE, GENERATION_TIMEOUT, INVALID_GAME_SPEC, STORAGE_ERROR, INTERNAL_ERROR]
+        message:
+          type: string
+          description: Безопасное описание для пользователя без секретов и внутренних трассировок
+    GameVersion:
+      type: object
+      required: [id, gameId, number, generationId, gameSpecVersion, runtimeVersion, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        gameId:
+          type: string
+          format: uuid
+        number:
+          type: integer
+          minimum: 1
+          description: Номер версии, монотонно возрастает внутри игры
+        generationId:
+          type: string
+          format: uuid
+        gameSpecVersion:
+          type: string
+          description: Версия схемы game.json
+          example: '1.0'
+        runtimeVersion:
+          type: string
+          description: Минимальная совместимая версия встроенного runtime
+          example: '1.0.0'
+        createdAt:
+          type: string
+          format: date-time
+    GamePackage:
+      type: object
+      required: [gameId, versionId, gameSpecVersion, runtimeVersion, expiresAt, gameSpec, assets]
+      properties:
+        gameId:
+          type: string
+          format: uuid
+        versionId:
+          type: string
+          format: uuid
+        gameSpecVersion:
+          type: string
+          example: '1.0'
+        runtimeVersion:
+          type: string
+          example: '1.0.0'
+        expiresAt:
+          type: string
+          format: date-time
+          description: Все URL пакета действуют как минимум до этого момента
+        gameSpec:
+          $ref: '#/components/schemas/PackageFile'
+        assets:
+          type: array
+          description: Может быть пустым, если GameSpec не использует внешние ресурсы
+          items:
+            $ref: '#/components/schemas/PackageFile'
+    PackageFile:
+      type: object
+      required: [path, url, mediaType, sizeBytes, sha256]
+      description: |
+        path уникален в пределах пакета, является относительным POSIX-путём
+        без сегментов . и .., обратных слешей и ведущего слеша.
+        Для gameSpec это game.json с mediaType application/json.
+      properties:
+        path:
+          type: string
+          minLength: 1
+          maxLength: 1024
+          example: assets/player.png
+        url:
+          type: string
+          format: uri
+          pattern: '^https://'
+          description: Временный URL для скачивания методом GET
+        mediaType:
+          type: string
+          example: image/png
+        sizeBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        sha256:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+    Publication:
+      type: object
+      required: [gameId, versionId, publishedAt]
+      properties:
+        gameId:
+          type: string
+          format: uuid
+        versionId:
+          type: string
+          format: uuid
+        publishedAt:
+          type: string
+          format: date-time
+    Rating:
+      type: object
+      required: [gameId, userId, score, updatedAt]
+      properties:
+        gameId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        score:
+          type: integer
+          minimum: 1
+          maximum: 5
+        updatedAt:
+          type: string
+          format: date-time
+    RatingSummary:
+      type: object
+      required: [average, count]
+      properties:
+        average:
+          type: number
+          format: double
+          nullable: true
+          minimum: 1
+          maximum: 5
+          description: null, если оценок нет
+        count:
+          type: integer
+          format: int64
+          minimum: 0
+    GamePage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Game'
+        nextCursor:
+          type: string
+          nullable: true
+          description: null, если следующей страницы нет
+    GenerationPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Generation'
+        nextCursor:
+          type: string
+          nullable: true
+          description: null, если следующей страницы нет
+    VersionPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/GameVersion'
+        nextCursor:
+          type: string
+          nullable: true
+          description: null, если следующей страницы нет
+    Problem:
+      type: object
+      description: Единый формат ошибок HTTP API, совместимый с Problem Details
+      required: [type, title, status, code, detail]
+      properties:
+        type:
+          type: string
+          format: uri
+          default: about:blank
+        title:
+          type: string
+          example: Конфликт состояния
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+          example: 409
+        code:
+          type: string
+          description: Стабильный машинный код ошибки
+          example: GENERATION_IN_PROGRESS
+        detail:
+          type: string
+          example: Для этой игры уже выполняется генерация
+        instance:
+          type: string
+          description: URI или путь запроса, вызвавшего ошибку
+        traceId:
+          type: string
+          description: Идентификатор для поиска запроса в логах
+        violations:
+          type: array
+          description: Ошибки конкретных полей при валидации
+          items:
+            type: object
+            required: [field, message]
+            properties:
+              field:
+                type: string
+                example: prompt
+              message:
+                type: string
+                example: Поле не должно быть пустым

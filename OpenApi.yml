@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: PlayLy Core API
-  version: 0.1.0
+  version: 0.3.0
   description: |
     HTTP API мобильной платформы ПлейЛи для создания, редактирования,
     публикации и запуска 2D-игр с помощью текстовых запросов.
@@ -9,13 +9,19 @@ info:
     Основа контракта — функциональное описание и обсуждённая архитектура PlayLy.
     Маршруты, поля, ограничения и способ авторизации предложены в этом документе
     как проектные решения: отдельной детальной спецификации API в репозитории нет.
-    Аутентификация предполагает внешний поставщик Bearer access token;
-    выдача и обновление токенов находятся за пределами этого контракта.
+    Core регистрирует пользователей по email и паролю, выдаёт JWT access token
+    и непрозрачный refresh token, обновляет и отзывает refresh-сессии.
+    Каталог и опубликованные игры доступны без входа. Операции /auth не требуют
+    access token; обновление и выход используют refresh token из тела запроса.
+    Остальные операции требуют Bearer access token. При передаче недействительного
+    access token даже публичная операция чтения возвращает 401.
 
     Android обращается к Core по HTTPS. Core асинхронно передаёт задания
-    AI-сервису через Kafka (generation.request / generation.result).
+    AI-сервису через Kafka (game.generation.request / game.generation.result).
     AI-сервис обращается к LLM по HTTPS и сохраняет GameSpec и ресурсы в MinIO.
-    Kafka и внутренний AI-сервис не предоставляют публичный HTTP API.
+    Kafka и внутренний AI-сервис не предоставляют публичный HTTP API. Все операции
+    этого документа реализует Core; теги обозначают его функциональные модули.
+    Контракт Kafka и внутренний манифест пакета описаны в README.md, разделы 7–8.
 
     Генерация возвращает 202 и идентификатор задания. Клиент опрашивает его статус.
     Результат успешной генерации — новая неизменяемая версия игры.
@@ -30,6 +36,8 @@ servers:
   - url: /api/v1
     description: Core API текущего окружения
 tags:
+  - name: Auth
+    description: Регистрация, вход и управление refresh-сессиями в Core
   - name: Profile
     description: Профиль текущего пользователя
   - name: Games
@@ -47,6 +55,127 @@ tags:
 security:
   - bearerAuth: []
 paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      operationId: registerUser
+      summary: Зарегистрироваться
+      description: Создаёт пользователя и refresh-сессию. Email уникален без учёта регистра; Core удаляет пробелы по краям email. Пароль хранится только как стойкий хеш и не возвращается.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Операция выполнена
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/EmailAlreadyRegistered'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: loginUser
+      summary: Войти по email и паролю
+      description: Создаёт отдельную refresh-сессию. Email нормализуется как при регистрации. Неверный email или пароль дают одинаковую ошибку 401 без раскрытия существования пользователя.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Операция выполнена
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/InvalidCredentials'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshTokens
+      summary: Обновить токены
+      description: Атомарно заменяет refresh token новым; использованный токен становится недействительным. Истёкший, отозванный или повторно использованный токен возвращает 401. Клиент выполняет обновление последовательно и сохраняет новую пару токенов.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: Операция выполнена
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/InvalidCredentials'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logoutUser
+      summary: Завершить refresh-сессию
+      description: Отзывает сессию указанного refresh token. Неизвестный, истёкший или уже отозванный токен также даёт 204. Выданный JWT access token действует до истечения своего срока; клиент удаляет оба токена.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '204':
+          description: Операция выполнена
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
   /me:
     get:
       tags: [Profile]
@@ -59,6 +188,30 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+    patch:
+      tags: [Profile]
+      operationId: updateCurrentUser
+      summary: Изменить отображаемое имя
+      description: Меняет имя профиля и имя автора в карточках игр; email не изменяется.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileUpdate'
+      responses:
+        '200':
+          description: Обновлённый профиль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         default:
@@ -122,6 +275,9 @@ paths:
     get:
       tags: [Games]
       operationId: getGame
+      security:
+        - {}
+        - bearerAuth: []
       summary: Получить карточку игры
       description: Владелец видит черновик; другие пользователи — опубликованную игру.
       responses:
@@ -201,7 +357,15 @@ paths:
         Повтор с тем же телом возвращает 202 с тем же заданием, даже если оно
         уже завершено. Повтор с другим телом возвращает 409.
         Одновременно допускается одно незавершённое задание на игру;
-        другое новое задание в это время возвращает 409.
+        другое новое задание в это время возвращает 409 (GENERATION_IN_PROGRESS).
+        Начальный лимит — три активных задания на пользователя; превышение
+        возвращает 429 (GENERATION_LIMIT_EXCEEDED) с Retry-After. Лимит настраивается
+        сервером. Повтор принятого запроса проверяется до лимитов и не расходует их.
+        Конфликт тела Idempotency-Key возвращает 409 (IDEMPOTENCY_KEY_REUSED).
+        Общий срок задания по умолчанию — 10 минут, включая очередь и обработку
+        результата; фактический deadlineAt возвращается в Generation.
+        Таймаут завершает задание с GENERATION_TIMEOUT, поздний результат игнорируется.
+        Неподдерживаемая механика даёт асинхронный FAILED с UNSUPPORTED_GAME_REQUEST.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -281,7 +445,11 @@ paths:
       summary: Получить состояние генерации
       description: |
         Только для владельца. Переходы QUEUED → RUNNING → SUCCEEDED или FAILED;
-        допускается QUEUED → FAILED. Терминальные статусы не меняются.
+        допускаются QUEUED → FAILED и QUEUED → SUCCEEDED, если результат пришёл
+        раньше события STARTED. Терминальные статусы не меняются.
+        deadlineAt ограничивает весь срок задания; повторная обработка его не продлевает.
+        По истечении дедлайна Core фиксирует FAILED с GENERATION_TIMEOUT.
+        Клиент может не наблюдать промежуточные статусы между опросами.
         SUCCEEDED означает, что пакет сохранён и версия доступна через Core.
       parameters:
         - name: generationId
@@ -336,6 +504,9 @@ paths:
     get:
       tags: [Versions]
       operationId: getGameVersion
+      security:
+        - {}
+        - bearerAuth: []
       summary: Получить метаданные версии
       description: |
         Владелец видит любую версию своей игры. Остальные пользователи могут
@@ -361,6 +532,9 @@ paths:
     get:
       tags: [Versions]
       operationId: getGamePackage
+      security:
+        - {}
+        - bearerAuth: []
       summary: Получить ссылки на GameSpec и ресурсы для запуска
       description: |
         Доступ как для getGameVersion. Возвращает временные HTTPS GET URL
@@ -447,6 +621,9 @@ paths:
     get:
       tags: [Catalog]
       operationId: listCatalogGames
+      security:
+        - {}
+        - bearerAuth: []
       summary: Найти опубликованные игры
       description: |
         Поиск без учёта регистра по названию и описанию.
@@ -482,6 +659,7 @@ paths:
       tags: [Ratings]
       operationId: getMyRating
       summary: Получить свою оценку опубликованной игры
+      description: Неопубликованная игра возвращает 404; оценки сохраняются при снятии с публикации и вновь доступны после повторной публикации.
       responses:
         '200':
           description: Оценка пользователя
@@ -504,6 +682,7 @@ paths:
       description: |
         Одна оценка на пользователя и игру, от 1 до 5. Оценка относится к игре,
         сохраняется при публикации новой версии. Игра должна быть опубликована.
+        Автор не может оценить собственную игру: 409 с кодом SELF_RATING_FORBIDDEN.
       requestBody:
         required: true
         content:
@@ -530,13 +709,15 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         default:
           $ref: '#/components/responses/UnexpectedError'
     delete:
       tags: [Ratings]
       operationId: deleteMyRating
       summary: Удалить свою оценку опубликованной игры
-      description: Если оценки уже нет, также возвращает 204.
+      description: Если оценки уже нет, также возвращает 204. Неопубликованная игра возвращает 404; сохранённая оценка доступна после повторной публикации.
       responses:
         '204':
           description: Оценка отсутствует
@@ -551,7 +732,8 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: Access token внешнего поставщика аутентификации
+      bearerFormat: JWT
+      description: JWT access token, выданный Core Service
   parameters:
     GameId:
       name: gameId
@@ -593,6 +775,18 @@ components:
         minLength: 1
         maxLength: 128
   responses:
+    InvalidCredentials:
+      description: Неверные учётные данные либо недействительный, истёкший или отозванный refresh token
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    EmailAlreadyRegistered:
+      description: Email уже зарегистрирован; code=EMAIL_ALREADY_REGISTERED
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
     BadRequest:
       description: Некорректные параметры, JSON или значения полей
       content:
@@ -617,13 +811,13 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
     Conflict:
-      description: Конфликт ключа идемпотентности или незавершённая генерация
+      description: Конфликт состояния; code — IDEMPOTENCY_KEY_REUSED, GENERATION_IN_PROGRESS или SELF_RATING_FORBIDDEN в зависимости от операции
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
     TooManyRequests:
-      description: Превышен лимит запросов генерации
+      description: Превышен лимит запросов операции; Retry-After указывает время ожидания
       headers:
         Retry-After:
           description: Время до повторного запроса в секундах
@@ -641,13 +835,108 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
   schemas:
-    User:
+    RegisterRequest:
       type: object
-      required: [id, displayName, createdAt]
+      additionalProperties: false
+      required: [email, password, displayName]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 8
+          maxLength: 128
+          description: Пароль не обрезается и не нормализуется
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: '\S'
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 1
+          maxLength: 128
+    RefreshTokenRequest:
+      type: object
+      additionalProperties: false
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+          minLength: 1
+          maxLength: 2048
+          writeOnly: true
+    AuthTokens:
+      type: object
+      required: [accessToken, refreshToken, tokenType, expiresIn, refreshExpiresIn]
+      properties:
+        accessToken:
+          type: string
+          minLength: 1
+          description: JWT для Authorization Bearer
+        refreshToken:
+          type: string
+          minLength: 1
+          description: Непрозрачный секрет refresh-сессии; хранится на сервере как хеш
+        tokenType:
+          type: string
+          enum: [Bearer]
+        expiresIn:
+          type: integer
+          minimum: 1
+          description: Срок действия access token в секундах от момента выдачи
+        refreshExpiresIn:
+          type: integer
+          minimum: 1
+          description: Срок действия refresh token в секундах от момента выдачи
+    ProfileUpdate:
+      type: object
+      additionalProperties: false
+      required: [displayName]
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: '\S'
+    Author:
+      type: object
+      required: [id, displayName]
+      description: Публичные данные автора; email и данные сессий не передаются
       properties:
         id:
           type: string
           format: uuid
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 100
+    User:
+      type: object
+      required: [id, email, displayName, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+          maxLength: 254
         displayName:
           type: string
           minLength: 1
@@ -672,14 +961,34 @@ components:
           example: Тетрис, в котором блоки рассыпаются в песок
     Game:
       type: object
-      required: [id, ownerId, title, description, status, publication, rating, createdAt, updatedAt]
+      required: [id, ownerId, author, title, description, status, publication, rating, createdAt, updatedAt]
+      oneOf:
+        - properties:
+            status:
+              type: string
+              enum: [DRAFT]
+            publication:
+              type: object
+              nullable: true
+              enum: [null]
+        - properties:
+            status:
+              type: string
+              enum: [PUBLISHED]
+            publication:
+              $ref: '#/components/schemas/Publication'
       description: |
         status=PUBLISHED тогда и только тогда, когда publication не null.
         DRAFT обозначает любую неопубликованную игру, в том числе с готовыми версиями.
+        author.id совпадает с ownerId; author.displayName — текущее имя автора.
+        Название и описание общие для игры: изменение метаданных сразу видно
+        в каталоге, но не меняет опубликованную версию GameSpec.
       properties:
         id:
           type: string
           format: uuid
+        author:
+          $ref: '#/components/schemas/Author'
         ownerId:
           type: string
           format: uuid
@@ -732,12 +1041,47 @@ components:
           format: uuid
           description: Версия этой игры для изменения; при генерации с нуля поле отсутствует
     Generation:
+      oneOf:
+        - allOf:
+            - $ref: '#/components/schemas/GenerationBase'
+            - type: object
+              properties:
+                status:
+                  type: string
+                  enum: [QUEUED, RUNNING]
+              not:
+                anyOf:
+                  - required: [resultVersionId]
+                  - required: [error]
+                  - required: [finishedAt]
+        - allOf:
+            - $ref: '#/components/schemas/GenerationBase'
+            - type: object
+              required: [resultVersionId, finishedAt]
+              properties:
+                status:
+                  type: string
+                  enum: [SUCCEEDED]
+              not:
+                required: [error]
+        - allOf:
+            - $ref: '#/components/schemas/GenerationBase'
+            - type: object
+              required: [error, finishedAt]
+              properties:
+                status:
+                  type: string
+                  enum: [FAILED]
+              not:
+                required: [resultVersionId]
+    GenerationBase:
       type: object
-      required: [id, gameId, prompt, status, createdAt, updatedAt]
+      required: [id, gameId, prompt, status, deadlineAt, createdAt, updatedAt]
       description: |
         resultVersionId обязателен только при SUCCEEDED; error — только при FAILED.
         При остальных статусах эти поля отсутствуют. baseVersionId присутствует
         только у задания редактирования. finishedAt есть только у терминального статуса.
+        deadlineAt задаётся Core при принятии задания и не продлевается при повторах.
       properties:
         id:
           type: string
@@ -755,6 +1099,10 @@ components:
         status:
           type: string
           enum: [QUEUED, RUNNING, SUCCEEDED, FAILED]
+        deadlineAt:
+          type: string
+          format: date-time
+          description: Предельный момент принятия результата Core; включает ожидание в очереди и все попытки
         resultVersionId:
           type: string
           format: uuid
@@ -775,7 +1123,7 @@ components:
       properties:
         code:
           type: string
-          enum: [LLM_UNAVAILABLE, GENERATION_TIMEOUT, INVALID_GAME_SPEC, STORAGE_ERROR, INTERNAL_ERROR]
+          enum: [LLM_UNAVAILABLE, GENERATION_TIMEOUT, UNSUPPORTED_GAME_REQUEST, INVALID_GAME_SPEC, STORAGE_ERROR, INTERNAL_ERROR]
         message:
           type: string
           description: Безопасное описание для пользователя без секретов и внутренних трассировок
@@ -802,12 +1150,16 @@ components:
           example: '1.0'
         runtimeVersion:
           type: string
-          description: Минимальная совместимая версия встроенного runtime
+          description: Минимальная версия runtime (SemVer); клиент поддерживает gameSpecVersion, имеет тот же major и версию не ниже указанной
           example: '1.0.0'
         createdAt:
           type: string
           format: date-time
     GamePackage:
+      description: |
+        Пакет готовой неизменяемой версии. Core формирует URL из проверенного
+        внутреннего манифеста MinIO; bucket/key и служебные итоги AI не раскрываются.
+        Android проверяет совместимость схемы и runtime перед запуском.
       type: object
       required: [gameId, versionId, gameSpecVersion, runtimeVersion, expiresAt, gameSpec, assets]
       properties:
@@ -822,16 +1174,26 @@ components:
           example: '1.0'
         runtimeVersion:
           type: string
+          description: Минимальная версия runtime (SemVer); тот же major и версия клиента не ниже указанной
           example: '1.0.0'
         expiresAt:
           type: string
           format: date-time
           description: Все URL пакета действуют как минимум до этого момента
         gameSpec:
-          $ref: '#/components/schemas/PackageFile'
+          allOf:
+            - $ref: '#/components/schemas/PackageFile'
+            - type: object
+              properties:
+                path:
+                  type: string
+                  enum: [game.json]
+                mediaType:
+                  type: string
+                  enum: [application/json]
         assets:
           type: array
-          description: Может быть пустым, если GameSpec не использует внешние ресурсы
+          description: Все внешние ресурсы GameSpec; пути уникальны во всём пакете. Может быть пустым, если ресурсы не используются
           items:
             $ref: '#/components/schemas/PackageFile'
     PackageFile:
@@ -839,13 +1201,15 @@ components:
       required: [path, url, mediaType, sizeBytes, sha256]
       description: |
         path уникален в пределах пакета, является относительным POSIX-путём
-        без сегментов . и .., обратных слешей и ведущего слеша.
+        без пустых сегментов, сегментов . и .., обратных слешей,
+        управляющих символов и ведущего слеша.
         Для gameSpec это game.json с mediaType application/json.
       properties:
         path:
           type: string
           minLength: 1
           maxLength: 1024
+          pattern: '^(?!.*(?:^|/)\.{1,2}(?:/|$))(?!.*[\x00-\x1F\x7F])(?:[^/\\]+/)*[^/\\]+$'
           example: assets/player.png
         url:
           type: string

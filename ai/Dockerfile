@@ -1,4 +1,4 @@
-FROM gradle:9.6.1-jdk25 AS build
+FROM --platform=$BUILDPLATFORM gradle:9.6.1-jdk25 AS build
 RUN mkdir -p /home/gradle/project
 WORKDIR /home/gradle/project
 COPY --chown=gradle:gradle . .

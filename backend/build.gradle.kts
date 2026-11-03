@@ -1,7 +1,7 @@
 plugins {
     java
     id("org.openapi.generator") version "7.26.0"
-    id("org.springframework.boot") version "4.1.0"
+    id("org.springframework.boot") version "4.1.2"
 }
 
 repositories {

@@ -391,8 +391,8 @@ Gradle генерирует исходники перед компиляцией
 Локальные тесты для Core и AI (JDK 25) и для Android (JDK 17, Gradle Wrapper 9.6.1 и Android SDK 36):
 
 ```sh
-gradle -p backend test
-gradle -p ai test
+./backend/gradlew -p backend test
+./ai/gradlew -p ai test
 ./mobile/gradlew -p mobile :app:testDebugUnitTest
 ```
 

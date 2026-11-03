@@ -4,7 +4,8 @@ WORKDIR /home/gradle/project
 COPY --chown=gradle:gradle OpenApi.yml ./
 COPY --chown=gradle:gradle backend/ ./backend/
 WORKDIR /home/gradle/project/backend
-RUN gradle --no-daemon check bootJar
+RUN --mount=type=cache,id=playly-core-gradle-jdk25,target=/home/gradle/.gradle/caches,uid=1000,gid=1000,sharing=locked \
+    gradle --no-daemon --build-cache check bootJar
 
 FROM eclipse-temurin:25-jre
 WORKDIR /app

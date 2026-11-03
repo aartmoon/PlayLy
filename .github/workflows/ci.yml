@@ -19,20 +19,35 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
+      - uses: android-actions/setup-android@v4
         with:
-          gradle-version: '8.13'
-      - run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
-      - run: gradle --no-daemon :app:assembleDebug :app:lintDebug :app:testDebugUnitTest
+          packages: "platform-tools platforms;android-36 build-tools;36.0.0"
+      - run: ./gradlew --no-daemon :app:assembleDebug :app:lintDebug :app:testDebugUnitTest
         working-directory: mobile
 
   containers:
     runs-on: ubuntu-latest
+    env:
+      COMPOSE_PROJECT_NAME: playly
     steps:
       - uses: actions/checkout@v4
       - run: docker compose config --quiet
-      - run: docker compose build core ai
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/bake-action@v6
+        with:
+          source: .
+          files: compose.yaml
+          targets: core,ai
+          load: true
+          set: |
+            core.tags=playly-core
+            ai.tags=playly-ai
+            core.cache-from=type=gha,scope=playly-core-smoke
+            core.cache-to=type=gha,scope=playly-core-smoke,mode=max
+            ai.cache-from=type=gha,scope=playly-ai-smoke
+            ai.cache-to=type=gha,scope=playly-ai-smoke,mode=max
       - run: |
-          docker compose up -d --no-deps traefik core ai
+          docker compose up -d --no-build --no-deps traefik core ai
           curl --fail --silent --show-error --retry 30 --retry-all-errors --retry-delay 1 http://127.0.0.1:8080/actuator/health
           test "$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8080/api/v1/catalog/games)" = 501
           test "$(docker inspect --format '{{.State.Running}}' "$(docker compose ps -aq ai)")" = true
@@ -80,5 +95,9 @@ jobs:
           file: ${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: true
+          cache-from: |
+            type=gha,scope=${{ matrix.image }}-release
+            type=gha,scope=${{ matrix.image }}-smoke
+          cache-to: type=gha,scope=${{ matrix.image }}-release,mode=max
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}

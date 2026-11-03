@@ -970,7 +970,8 @@ components:
             publication:
               type: object
               nullable: true
-              enum: [null]
+              not:
+                type: object
         - properties:
             status:
               type: string

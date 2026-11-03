@@ -372,9 +372,11 @@ curl --fail http://localhost:8080/actuator/health
 
 Traefik принимает локальные HTTP-запросы на порту `CORE_PORT` из `.env` (по умолчанию 8080) и проксирует `/api/v1/*` и `/actuator/health` в Core. Порт контейнера Core доступен внутри Docker.
 
+Локальный стенд использует зеркало релиза MinIO на Docker Hub. Источник образа можно задать через `MINIO_IMAGE` в `.env`.
+
 Консоль MinIO доступна на `http://localhost:9001`. Учётные данные для локальной разработки заданы в `.env`. Команда `docker compose down` остановит стенд и сохранит данные в томах.
 
-Для Android откройте `mobile/` в Android Studio с JDK 17, Gradle 8.13 и Android SDK 36. Из терминала в корне репозитория можно собрать приложение командой `gradle -p mobile :app:assembleDebug` с теми же версиями JDK и Gradle.
+Для Android откройте `mobile/` в Android Studio с JDK 17, Gradle Wrapper 9.6.1 и Android SDK 36. Из терминала в корне репозитория можно собрать приложение командой `./mobile/gradlew -p mobile :app:assembleDebug` с теми же версиями JDK и Gradle.
 
 #### Генерация контрактов
 
@@ -386,12 +388,12 @@ Traefik принимает локальные HTTP-запросы на порт�
 
 Gradle генерирует исходники перед компиляцией и сохраняет их в `build/generated/` соответствующего модуля. Меняйте файлы контрактов. Для Android передавайте клиенту абсолютный URL сервера с префиксом `/api/v1`.
 
-Локальные тесты для Core и AI (JDK 25) и для Android (JDK 17, Gradle 8.13 и Android SDK 36):
+Локальные тесты для Core и AI (JDK 25) и для Android (JDK 17, Gradle Wrapper 9.6.1 и Android SDK 36):
 
 ```sh
 gradle -p backend test
 gradle -p ai test
-gradle -p mobile :app:testDebugUnitTest
+./mobile/gradlew -p mobile :app:testDebugUnitTest
 ```
 
 ### 15. CI и публикация в Docker Hub

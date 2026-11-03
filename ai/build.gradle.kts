@@ -18,10 +18,10 @@ repositories {
 }
 
 jsonSchema2Pojo {
-    source = files("src/main/schema")
+    setSource(files("src/main/schema"))
     targetDirectory = layout.buildDirectory.dir("generated/kafka").get().asFile
     targetPackage = "com.playly.ai.generated.kafka"
-    annotationStyle = "none"
+    setAnnotationStyle("none")
     dateTimeType = "java.lang.String"
     removeOldOutput = true
 }

@@ -27,7 +27,7 @@ val generatedApi = layout.buildDirectory.dir("generated/openapi")
 openApiGenerate {
     generatorName.set("spring")
     inputSpec.set(rootProject.file("../OpenApi.yml").absolutePath)
-    outputDir.set(generatedApi.map { it.asFile.absolutePath })
+    outputDir.set(generatedApi)
     apiPackage.set("com.playly.core.generated.api")
     modelPackage.set("com.playly.core.generated.model")
     cleanupOutput.set(true)

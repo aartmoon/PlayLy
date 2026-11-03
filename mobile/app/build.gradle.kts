@@ -1,8 +1,7 @@
 plugins {
     id("org.openapi.generator") version "7.26.0"
-    id("com.android.application") version "8.13.2"
-    id("org.jetbrains.kotlin.android") version "2.3.10"
-    id("org.jetbrains.kotlin.plugin.compose") version "2.3.10"
+    id("com.android.application") version "9.4.0"
+    id("org.jetbrains.kotlin.plugin.compose") version "2.4.20"
 }
 
 android {
@@ -37,17 +36,13 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
 }
 
-kotlin {
-    jvmToolchain(17)
-}
-
 val generatedClient = layout.buildDirectory.dir("generated/openapi")
 
 openApiGenerate {
     generatorName.set("kotlin")
     library.set("jvm-okhttp4")
     inputSpec.set(rootProject.file("../OpenApi.yml").absolutePath)
-    outputDir.set(generatedClient.map { it.asFile.absolutePath })
+    outputDir.set(generatedClient)
     cleanupOutput.set(true)
     configOptions.set(mapOf(
         "packageName" to "com.playly.app.generated",
@@ -58,8 +53,8 @@ openApiGenerate {
     generateModelTests.set(false)
 }
 
-kotlin.sourceSets.named("main") {
-    kotlin.srcDir(generatedClient.map { it.dir("src/main/kotlin") })
+android.sourceSets.named("main") {
+    kotlin.directories += generatedClient.get().dir("src/main/kotlin").asFile.absolutePath
 }
 
 tasks.named("preBuild") {

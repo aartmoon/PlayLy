@@ -1,0 +1,7 @@
+**
+!OpenApi.yml
+!backend/
+!backend/settings.gradle.kts
+!backend/build.gradle.kts
+!backend/src/
+!backend/src/**

@@ -1,0 +1,38 @@
+plugins {
+    java
+    id("org.jsonschema2pojo") version "1.3.3"
+}
+
+java {
+    toolchain.languageVersion.set(JavaLanguageVersion.of(25))
+}
+
+tasks.jar {
+    manifest {
+        attributes("Main-Class" to "com.playly.ai.GenerationWorker")
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+jsonSchema2Pojo {
+    source = files("src/main/schema")
+    targetDirectory = layout.buildDirectory.dir("generated/kafka").get().asFile
+    targetPackage = "com.playly.ai.generated.kafka"
+    annotationStyle = "none"
+    dateTimeType = "java.lang.String"
+    removeOldOutput = true
+}
+
+dependencies {
+    testImplementation(platform("org.junit:junit-bom:5.13.4"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testImplementation("com.google.code.gson:gson:2.13.2")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+tasks.test {
+    useJUnitPlatform()
+}

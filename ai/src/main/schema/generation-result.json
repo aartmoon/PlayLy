@@ -1,0 +1,102 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "generation-result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "eventId",
+    "schemaVersion",
+    "generationId",
+    "gameId",
+    "occurredAt",
+    "type"
+  ],
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "schemaVersion": {
+      "type": "integer"
+    },
+    "generationId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "gameId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "STARTED",
+        "SUCCEEDED",
+        "FAILED"
+      ]
+    },
+    "manifest": {
+      "$ref": "object-reference.json"
+    },
+    "error": {
+      "$ref": "generation-failure.json"
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "type": {
+          "const": "STARTED"
+        }
+      },
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "manifest"
+            ]
+          },
+          {
+            "required": [
+              "error"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "properties": {
+        "type": {
+          "const": "SUCCEEDED"
+        }
+      },
+      "required": [
+        "manifest"
+      ],
+      "not": {
+        "required": [
+          "error"
+        ]
+      }
+    },
+    {
+      "properties": {
+        "type": {
+          "const": "FAILED"
+        }
+      },
+      "required": [
+        "error"
+      ],
+      "not": {
+        "required": [
+          "manifest"
+        ]
+      }
+    }
+  ]
+}

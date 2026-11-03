@@ -1,0 +1,12 @@
+http:
+  routers:
+    core:
+      entryPoints: [web]
+      rule: 'Path(`/api/v1`) || PathPrefix(`/api/v1/`) || Path(`/actuator/health`)'
+      service: core
+
+  services:
+    core:
+      loadBalancer:
+        servers:
+          - url: http://core:8080

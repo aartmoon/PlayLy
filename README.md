@@ -115,8 +115,8 @@ Core Service является владельцем основной базы д�
 | Миграции БД | Flyway |
 | База данных | PostgreSQL |
 | Асинхронное взаимодействие | Apache Kafka, Spring Kafka |
-| AI Generation Service | TODO |
-| Интеграция с LLM | HTTP API, httpx  (TODO) |
+| AI Generation Service | Java 25, Gradle |
+| Интеграция с LLM | HTTP API (TODO) |
 | Валидация GameSpec |  JSON Schema (TODO) |
 | Объектное хранилище | MinIO (S3-compatible API) |
 | Android | Kotlin, Jetpack Compose |
@@ -350,3 +350,56 @@ AI может читать разрешённую библиотеку и исх
 В рамках проекта будут разработаны основной серверный сервис, отдельный сервис AI-генерации, универсальный игровой движок, мобильное приложение и система асинхронного взаимодействия на базе Apache Kafka.
 
 Разработанная архитектура предусматривает возможность дальнейшего расширения библиотеки игровых механик, подключения других LLM и независимого масштабирования вычислительно затратной обработки AI-запросов.
+
+### 14. Каркас и локальный запуск
+
+| Каталог | Что есть сейчас |
+|---|---|
+| `mobile/` | Android-приложение с одним экраном на Kotlin и Jetpack Compose |
+| `backend/` | Core Service на Java 25 и Spring Boot 4.1 с `GET /actuator/health` |
+| `ai/` | Java 25, процесс-заглушка AI Generation Service |
+| `compose.yaml` | Traefik, Core, AI, PostgreSQL, Kafka в режиме KRaft и MinIO с локальными томами |
+
+Core регистрирует сгенерированные маршруты под `/api/v1`. Сгенерированные заглушки возвращают `501 Not Implemented` для корректных запросов. Авторизация, подключение к хранилищам, обработка сообщений Kafka и генерация игр остаются следующими этапами. PostgreSQL доступен только в сети Core и БД.
+
+Для локального запуска нужен Docker с Compose.
+
+```sh
+cp .env.example .env
+docker compose up -d --build
+curl --fail http://localhost:8080/actuator/health
+```
+
+Traefik принимает локальные HTTP-запросы на порту `CORE_PORT` из `.env` (по умолчанию 8080) и проксирует `/api/v1/*` и `/actuator/health` в Core. Порт контейнера Core доступен внутри Docker.
+
+Консоль MinIO доступна на `http://localhost:9001`. Учётные данные для локальной разработки заданы в `.env`. Команда `docker compose down` остановит стенд и сохранит данные в томах.
+
+Для Android откройте `mobile/` в Android Studio с JDK 17, Gradle 8.13 и Android SDK 36. Из терминала в корне репозитория можно собрать приложение командой `gradle -p mobile :app:assembleDebug` с теми же версиями JDK и Gradle.
+
+#### Генерация контрактов
+
+| Модуль | Источник | Результат |
+|---|---|---|
+| Core | `OpenApi.yml` | Spring MVC API, контроллеры-заглушки и Java DTO |
+| Android | `OpenApi.yml` | Kotlin-клиент на OkHttp и DTO для Moshi |
+| AI | `ai/src/main/schema/` | Java DTO для сообщений Kafka из раздела 7.3 |
+
+Gradle генерирует исходники перед компиляцией и сохраняет их в `build/generated/` соответствующего модуля. Меняйте файлы контрактов. Для Android передавайте клиенту абсолютный URL сервера с префиксом `/api/v1`.
+
+Локальные тесты для Core и AI (JDK 25) и для Android (JDK 17, Gradle 8.13 и Android SDK 36):
+
+```sh
+gradle -p backend test
+gradle -p ai test
+gradle -p mobile :app:testDebugUnitTest
+```
+
+### 15. CI и публикация в Docker Hub
+
+На pull request, push в `main` и push тега `v*` GitHub Actions собирает Android APK, запускает Android Lint и тест декодирования ответа каталога. Сборки серверных образов запускают тест HTTP-маршрута Core и тест чтения Kafka-события AI. После сборки CI проверяет запуск контейнеров и доступность маршрутов Core через Traefik. После успешных проверок push в `main` или push тега публикует оба серверных образа для `linux/amd64` и `linux/arm64`.
+
+1. Создайте репозитории `playly-core` и `playly-ai` в своём аккаунте Docker Hub.
+2. В GitHub откройте **Settings → Secrets and variables → Actions**. Добавьте переменную `DOCKERHUB_USERNAME` и секрет `DOCKERHUB_TOKEN` с правом записи в эти репозитории.
+3. Отправьте изменения в `main` или отправьте тег релиза, например `v0.1.0`.
+
+У каждой публикации есть тег `sha-<полный SHA коммита>`. Push в `main` также обновляет `latest`, а push тега публикует одноимённый тег образа, например `v0.1.0`.

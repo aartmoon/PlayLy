@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "generation-request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "eventId",
+    "schemaVersion",
+    "generationId",
+    "gameId",
+    "occurredAt",
+    "prompt",
+    "deadlineAt",
+    "gameSpecVersion",
+    "runtimeVersion"
+  ],
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "schemaVersion": {
+      "type": "integer"
+    },
+    "generationId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "gameId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "prompt": {
+      "type": "string"
+    },
+    "deadlineAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "gameSpecVersion": {
+      "type": "string"
+    },
+    "runtimeVersion": {
+      "type": "string"
+    },
+    "baseVersionId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "baseManifest": {
+      "$ref": "object-reference.json"
+    }
+  },
+  "dependencies": {
+    "baseVersionId": [
+      "baseManifest"
+    ],
+    "baseManifest": [
+      "baseVersionId"
+    ]
+  }
+}

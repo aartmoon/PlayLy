@@ -14,11 +14,24 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+    environment:
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:-playly-redis-local}
+    depends_on:
+      redis:
+        condition: service_healthy
     networks: [edge, data, generation]
 
   ai:
     build: ./ai
-    networks: [generation]
+    environment:
+      LANGFUSE_BASE_URL: http://langfuse-web:3000
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-playly-local}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-playly-local}
+    depends_on:
+      langfuse-web:
+        condition: service_healthy
+    networks: [generation, observability]
 
   postgres:
     image: postgres:17-alpine
@@ -28,6 +41,20 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-playly-local}
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    networks: [data]
+
+  redis:
+    image: redis:7.4-alpine
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-playly-redis-local}
+    command: ["/bin/sh", "-ec", 'exec docker-entrypoint.sh redis-server --requirepass "$$REDIS_PASSWORD"']
+    healthcheck:
+      test: ["CMD-SHELL", 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -qx PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - redis-data:/data
     networks: [data]
 
   kafka:
@@ -50,7 +77,13 @@ services:
 
   minio:
     image: ${MINIO_IMAGE:-docker.io/dappros/minio:RELEASE.2025-09-07T16-13-09Z}
-    command: server /data --console-address ":9001"
+    entrypoint: ["/bin/sh", "-ec"]
+    command: ["mkdir -p /data/langfuse && exec minio server /data --console-address :9001"]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-playly}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-playly-local}
@@ -58,14 +91,119 @@ services:
       - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - minio-data:/data
-    networks: [generation]
+    networks: [generation, observability]
+
+  langfuse-worker:
+    image: docker.langfuse.com/langfuse/langfuse-worker:4
+    environment: &langfuse-environment
+      NEXTAUTH_URL: http://localhost:${LANGFUSE_PORT:-3000}
+      DATABASE_URL: postgresql://langfuse:langfuse-local@langfuse-postgres:5432/langfuse
+      SALT: ${LANGFUSE_SALT:-playly-local-salt}
+      ENCRYPTION_KEY: "${LANGFUSE_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}"
+      TELEMETRY_ENABLED: "false"
+      CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
+      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      CLICKHOUSE_USER: langfuse
+      CLICKHOUSE_PASSWORD: langfuse-local
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      REDIS_HOST: langfuse-redis
+      REDIS_PORT: "6379"
+      REDIS_AUTH: langfuse-local
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-playly}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-playly-local}
+    depends_on: &langfuse-dependencies
+      langfuse-postgres:
+        condition: service_healthy
+      langfuse-clickhouse:
+        condition: service_healthy
+      langfuse-redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks: [observability]
+
+  langfuse-postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: langfuse
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse-local
+    volumes:
+      - langfuse-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "langfuse", "-d", "langfuse"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [observability]
+
+  langfuse-clickhouse:
+    image: clickhouse/clickhouse-server:26.3.62.3
+    user: "101:101"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: langfuse
+      CLICKHOUSE_PASSWORD: langfuse-local
+    volumes:
+      - langfuse-clickhouse-data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8123/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [observability]
+
+  langfuse-redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--requirepass", "langfuse-local", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - langfuse-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "langfuse-local", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [observability]
+
+  langfuse-web:
+    image: docker.langfuse.com/langfuse/langfuse:4
+    depends_on: *langfuse-dependencies
+    environment:
+      <<: *langfuse-environment
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-playly-local-nextauth-secret}
+      LANGFUSE_INIT_ORG_ID: playly
+      LANGFUSE_INIT_ORG_NAME: PlayLy
+      LANGFUSE_INIT_PROJECT_ID: playly-local
+      LANGFUSE_INIT_PROJECT_NAME: PlayLy Local
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-playly-local}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-playly-local}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_USER_EMAIL:-admin@playly.local}
+      LANGFUSE_INIT_USER_NAME: PlayLy Admin
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_USER_PASSWORD:-playly-local-admin}
+    ports:
+      - "127.0.0.1:${LANGFUSE_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/public/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks: [observability]
 
 networks:
+  observability:
   edge:
   data:
   generation:
 
 volumes:
   postgres-data:
+  redis-data:
   kafka-data:
   minio-data:
+  langfuse-postgres-data:
+  langfuse-clickhouse-data:
+  langfuse-redis-data:

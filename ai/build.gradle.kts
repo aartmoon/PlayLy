@@ -1,5 +1,5 @@
 plugins {
-    java
+    application
     id("org.jsonschema2pojo") version "1.3.3"
 }
 
@@ -7,10 +7,8 @@ java {
     toolchain.languageVersion.set(JavaLanguageVersion.of(25))
 }
 
-tasks.jar {
-    manifest {
-        attributes("Main-Class" to "com.playly.ai.GenerationWorker")
-    }
+application {
+    mainClass.set("com.playly.ai.GenerationWorker")
 }
 
 repositories {
@@ -27,6 +25,10 @@ jsonSchema2Pojo {
 }
 
 dependencies {
+    implementation(platform("io.opentelemetry:opentelemetry-bom:1.62.0"))
+    implementation("io.opentelemetry:opentelemetry-sdk")
+    implementation("io.opentelemetry:opentelemetry-exporter-otlp")
+
     testImplementation(platform("org.junit:junit-bom:5.13.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("com.google.code.gson:gson:2.13.2")

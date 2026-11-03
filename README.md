@@ -117,6 +117,7 @@ Core Service является владельцем основной базы д�
 | Асинхронное взаимодействие | Apache Kafka, Spring Kafka |
 | AI Generation Service | Java 25, Gradle |
 | Интеграция с LLM | HTTP API (TODO) |
+| Трассировка AI | OpenTelemetry → локальный Langfuse |
 | Валидация GameSpec |  JSON Schema (TODO) |
 | Объектное хранилище | MinIO (S3-compatible API) |
 | Android | Kotlin, Jetpack Compose |
@@ -358,7 +359,7 @@ AI может читать разрешённую библиотеку и исх
 | `mobile/` | Android-приложение с одним экраном на Kotlin и Jetpack Compose |
 | `backend/` | Core Service на Java 25 и Spring Boot 4.1 с `GET /actuator/health` |
 | `ai/` | Java 25, процесс-заглушка AI Generation Service |
-| `compose.yaml` | Traefik, Core, AI, PostgreSQL, Kafka в режиме KRaft и MinIO с локальными томами |
+| `compose.yaml` | Traefik, Core, AI, PostgreSQL, Redis, Kafka в режиме KRaft, MinIO и Langfuse с локальными томами |
 
 Core регистрирует сгенерированные маршруты под `/api/v1`. Сгенерированные заглушки возвращают `501 Not Implemented` для корректных запросов. Авторизация, подключение к хранилищам, обработка сообщений Kafka и генерация игр остаются следующими этапами. PostgreSQL доступен только в сети Core и БД.
 
@@ -377,6 +378,14 @@ Traefik принимает локальные HTTP-запросы на порт�
 Консоль MinIO доступна на `http://localhost:9001`. Учётные данные для локальной разработки заданы в `.env`. Команда `docker compose down` остановит стенд и сохранит данные в томах.
 
 Для Android откройте `mobile/` в Android Studio с JDK 17, Gradle Wrapper 9.6.1 и Android SDK 36. Из терминала в корне репозитория можно собрать приложение командой `./mobile/gradlew -p mobile :app:assembleDebug` с теми же версиями JDK и Gradle.
+
+Core подключается к Redis по адресу `redis:6379` внутри Docker. Пароль задаётся в `.env` через `REDIS_PASSWORD`. Redis Langfuse работает отдельно.
+
+#### Локальный Langfuse
+
+Langfuse запускается вместе с PlayLy командой `docker compose up -d --build`. Веб-интерфейс доступен на `http://localhost:3000`. Порт меняется через `LANGFUSE_PORT` в `.env`. На первом запуске Langfuse создаёт проект **PlayLy Local** и локального пользователя с данными из `.env.example` (`admin@playly.local` / `playly-local-admin`). Эти значения предназначены для локальной разработки.
+
+AI ждёт готовности Langfuse и отправляет проверочный спан `playly.ai.worker.start` по внутренней сети Docker. Ключи проекта задаются через `LANGFUSE_PUBLIC_KEY` и `LANGFUSE_SECRET_KEY` до первого запуска. Для уже созданного проекта используйте его действующую пару ключей. Langfuse хранит трейсы в отдельном ClickHouse, а события пишет в бакет `langfuse` существующего MinIO. Промпты и ответы воркер пока не записывает.
 
 #### Генерация контрактов
 

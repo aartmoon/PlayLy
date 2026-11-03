@@ -24,6 +24,14 @@ jobs:
           packages: "platform-tools platforms;android-36 build-tools;36.0.0"
       - run: ./gradlew --no-daemon :app:assembleDebug :app:lintDebug :app:testDebugUnitTest
         working-directory: mobile
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: android-lint-report
+          path: |
+            mobile/app/build/reports/lint-results-debug.*
+            mobile/app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt
+          if-no-files-found: ignore
 
   containers:
     runs-on: ubuntu-latest

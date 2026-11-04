@@ -14,17 +14,17 @@ import org.springframework.util.backoff.FixedBackOff;
 @ConditionalOnProperty(name = "playly.kafka.enabled", matchIfMissing = true)
 class GenerationKafkaConfig {
     @Bean
-    NewTopic generationRequests() {
+    NewTopic generationRequestsTopic() {
         return new NewTopic(GenerationKafka.REQUEST, 3, (short) 1);
     }
 
     @Bean
-    NewTopic generationResults() {
+    NewTopic generationResultsTopic() {
         return new NewTopic(GenerationKafka.RESULT, 3, (short) 1);
     }
 
     @Bean
-    NewTopic generationDeadLetters() {
+    NewTopic generationDeadLettersTopic() {
         return new NewTopic(GenerationKafka.DLT, 3, (short) 1);
     }
 

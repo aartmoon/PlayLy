@@ -15,9 +15,25 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     environment:
+      PLAYLY_DB_URL: jdbc:postgresql://postgres:5432/playly
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-playly-local}
+      PLAYLY_JWT_SECRET: ${PLAYLY_JWT_SECRET:-playly-local-only-change-this-secret-before-deploying}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-http://localhost:${MINIO_API_PORT:-9000}}
+      MINIO_GAME_BUCKET: ${MINIO_GAME_BUCKET:-playly-games}
+      PLAYLY_MINIO_ACCESS_KEY: ${PLAYLY_MINIO_ACCESS_KEY:-${MINIO_ROOT_USER:-playly}}
+      PLAYLY_MINIO_SECRET_KEY: ${PLAYLY_MINIO_SECRET_KEY:-${MINIO_ROOT_PASSWORD:-playly-local}}
+      SERVER_FORWARD_HEADERS_STRATEGY: native
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:-playly-redis-local}
     depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
       redis:
         condition: service_healthy
     networks: [edge, data, generation]
@@ -39,6 +55,11 @@ services:
       POSTGRES_DB: playly
       POSTGRES_USER: playly
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-playly-local}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U playly -d playly"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
     volumes:
       - postgres-data:/var/lib/postgresql/data
     networks: [data]
@@ -71,6 +92,11 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_LOG_DIRS: /var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "/opt/kafka/bin/kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
     volumes:
       - kafka-data:/var/lib/kafka/data
     networks: [generation]
@@ -78,7 +104,7 @@ services:
   minio:
     image: ${MINIO_IMAGE:-docker.io/dappros/minio:RELEASE.2025-09-07T16-13-09Z}
     entrypoint: ["/bin/sh", "-ec"]
-    command: ["mkdir -p /data/langfuse && exec minio server /data --console-address :9001"]
+    command: ['mkdir -p /data/langfuse "/data/$$MINIO_GAME_BUCKET" && exec minio server /data --console-address :9001']
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 5s
@@ -87,8 +113,10 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-playly}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-playly-local}
+      MINIO_GAME_BUCKET: ${MINIO_GAME_BUCKET:-playly-games}
     ports:
       - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
+      - "127.0.0.1:${MINIO_API_PORT:-9000}:9000"
     volumes:
       - minio-data:/data
     networks: [generation, observability]

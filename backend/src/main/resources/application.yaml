@@ -1,0 +1,47 @@
+spring:
+  datasource:
+    url: ${PLAYLY_DB_URL:jdbc:postgresql://localhost:5432/playly}
+    username: ${PLAYLY_DB_USER:playly}
+    password: ${POSTGRES_PASSWORD:playly-local}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      group-id: playly-core
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+    listener:
+      ack-mode: record
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      properties:
+        delivery.timeout.ms: 10000
+        request.timeout.ms: 5000
+        max.block.ms: 5000
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+      fail-on-trailing-tokens: true
+      accept-float-as-int: false
+playly:
+  auth:
+    jwt-secret: ${PLAYLY_JWT_SECRET:}
+    access-ttl: PT15M
+    refresh-ttl: P30D
+    requests-per-minute: 30
+  generation:
+    deadline: PT10M
+    active-per-user: 3
+    game-spec-version: '1.0'
+    runtime-version: '1.0.0'
+  storage:
+    endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+    public-endpoint: ${MINIO_PUBLIC_ENDPOINT:http://localhost:9000}
+    access-key: ${PLAYLY_MINIO_ACCESS_KEY:${MINIO_ROOT_USER:playly}}
+    secret-key: ${PLAYLY_MINIO_SECRET_KEY:${MINIO_ROOT_PASSWORD:playly-local}}
+    bucket: ${MINIO_GAME_BUCKET:playly-games}
+    url-ttl: PT5M
+    cleanup-grace: PT24H

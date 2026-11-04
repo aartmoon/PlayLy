@@ -57,7 +57,36 @@ jobs:
       - run: |
           docker compose up -d --no-build --wait --wait-timeout 240 traefik core ai langfuse-worker
           curl --fail --silent --show-error --retry 30 --retry-all-errors --retry-delay 1 http://127.0.0.1:8080/actuator/health
-          test "$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8080/api/v1/catalog/games)" = 501
+          api=http://127.0.0.1:8080/api/v1
+          curl -fsS "$api/catalog/games" | jq -e '.items == [] and .nextCursor == null'
+          tokens=$(curl -fsS -H 'Content-Type: application/json' -d '{"email":" smoke@example.com ","password":"playly-smoke","displayName":"CI"}' "$api/auth/register")
+          access=$(jq -er .accessToken <<< "$tokens")
+          game=$(curl -fsS -H "Authorization: Bearer $access" -H 'Content-Type: application/json' -d '{"title":"Smoke","description":""}' "$api/games")
+          game_id=$(jq -er .id <<< "$game")
+          test "$(curl -sS -o /dev/null -w '%{http_code}' "$api/games/$game_id")" = 404
+          endpoint="$api/games/$game_id/generations"
+          args=(-fsS -H "Authorization: Bearer $access" -H 'Content-Type: application/json' -H 'Idempotency-Key: smoke' -d '{"prompt":"Create a game"}')
+          first=$(curl "${args[@]}" "$endpoint" | jq -er .id)
+          second=$(curl "${args[@]}" "$endpoint" | jq -er .id)
+          test "$first" = "$second"
+          curl -fsS -H "Authorization: Bearer $access" "$api/generations/$first" | jq -e '.status == "QUEUED"'
+          event_id=$(cat /proc/sys/kernel/random/uuid)
+          result=$(jq -cn --arg event "$event_id" --arg job "$first" --arg game "$game_id" \
+            --arg time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{eventId:$event,schemaVersion:1,generationId:$job,gameId:$game,occurredAt:$time,type:"FAILED",error:{code:"UNSUPPORTED_GAME_REQUEST",message:"unsupported"}}')
+          printf '%s|%s\n' "$first" "$result" | docker compose exec -T kafka /opt/kafka/bin/kafka-console-producer.sh \
+            --bootstrap-server kafka:9092 --topic game.generation.result --property parse.key=true --property 'key.separator=|'
+          for attempt in {1..20}; do
+            job=$(curl -fsS -H "Authorization: Bearer $access" "$api/generations/$first")
+            if jq -e '.status == "FAILED" and .error.code == "UNSUPPORTED_GAME_REQUEST"' <<< "$job"; then
+              break
+            fi
+            sleep 1
+          done
+          jq -e '.status == "FAILED" and .error.code == "UNSUPPORTED_GAME_REQUEST"' <<< "$job"
+          refresh_body=$(jq -c '{refreshToken}' <<< "$tokens")
+          curl -fsS -H 'Content-Type: application/json' -d "$refresh_body" "$api/auth/refresh" | jq -e '.refreshToken | length > 0'
+          test "$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d "$refresh_body" "$api/auth/refresh")" = 401
           test "$(docker inspect --format '{{.State.Running}}' "$(docker compose ps -aq ai)")" = true
       - if: failure()
         run: |

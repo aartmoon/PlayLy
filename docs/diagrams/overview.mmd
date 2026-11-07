@@ -1,0 +1,38 @@
+flowchart TD
+    subgraph mobile["Android Application"]
+        app["UI / API Client · Kotlin / Jetpack Compose"]
+        loader["Game Loader · планируется"]
+        runtime["Game Runtime / 2D Renderer · планируется"]
+        app -.->|Запуск игры| loader
+        loader -.->|GameSpec и ресурсы| runtime
+    end
+
+    subgraph server["PlayLy · Docker Compose"]
+        traefik["Traefik"]
+        core["Core Service · Java / Spring Boot"]
+        db[("PostgreSQL · playly")]
+        redis[("Redis · PlayLy")]
+        subgraph kafka["Apache Kafka · KRaft"]
+            request["game.generation.request"]
+            result["game.generation.result"]
+        end
+        ai["AI Generation Service · пока заглушка"]
+        minio[("MinIO · пакеты игр и события Langfuse")]
+        langfuse["Локальный Langfuse"]
+    end
+
+    llm["Внешний LLM API · планируется"]
+    app -->|REST /api/v1 · JWT · polling| traefik
+    traefik --> core
+    core -->|JDBC · данные и Outbox| db
+    core -->|Outbox publisher · generationId| request
+    request -.->|Получение задания| ai
+    ai -.->|STARTED / SUCCEEDED / FAILED| result
+    result -->|Применение результата| core
+    core -->|S3 API · проверка и очистка| minio
+    core -->|GamePackage с временными ссылками| app
+    loader -.->|GET по подписанным ссылкам| minio
+    ai -.->|Чтение исходников и запись результата| minio
+    ai -.->|Генерация / редактирование GameSpec| llm
+    ai -->|OpenTelemetry · стартовый span| langfuse
+    langfuse -->|Бакет langfuse| minio

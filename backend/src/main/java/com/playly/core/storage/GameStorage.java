@@ -54,6 +54,7 @@ public class GameStorage {
         this.bucket = bucket;
         this.urlTtl = Math.toIntExact(urlTtl.toSeconds());
         this.retentionSeconds = cleanupGrace.plus(urlTtl).plus(generationDeadline).toSeconds();
+        // This SDK talks S3 to RustFS; the public signer must use the same region.
         this.internal = MinioClient.builder().endpoint(endpoint).region("us-east-1").credentials(accessKey, secretKey).build();
         this.internal.setTimeout(2_000, 5_000, 5_000);
         this.publicSigner = MinioClient.builder().endpoint(publicEndpoint).region("us-east-1").credentials(accessKey, secretKey).build();

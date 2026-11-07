@@ -2,9 +2,9 @@ flowchart TD
     subgraph mobile["Android Application"]
         app["UI / API Client · Kotlin / Jetpack Compose"]
         loader["Game Loader · планируется"]
-        runtime["Game Runtime / 2D Renderer · планируется"]
+        runtime["WebView / Phaser · планируется"]
         app -.->|Запуск игры| loader
-        loader -.->|GameSpec и ресурсы| runtime
+        loader -.->|Веб-пакет и ресурсы| runtime
     end
 
     subgraph server["PlayLy · Docker Compose"]
@@ -17,7 +17,7 @@ flowchart TD
             result["game.generation.result"]
         end
         ai["AI Generation Service · пока заглушка"]
-        minio[("MinIO · пакеты игр и события Langfuse")]
+        rustfs[("RustFS · пакеты игр и события Langfuse")]
         langfuse["Локальный Langfuse"]
     end
 
@@ -29,10 +29,10 @@ flowchart TD
     request -.->|Получение задания| ai
     ai -.->|STARTED / SUCCEEDED / FAILED| result
     result -->|Применение результата| core
-    core -->|S3 API · проверка и очистка| minio
+    core -->|S3 API · проверка и очистка| rustfs
     core -->|GamePackage с временными ссылками| app
-    loader -.->|GET по подписанным ссылкам| minio
-    ai -.->|Чтение исходников и запись результата| minio
-    ai -.->|Генерация / редактирование GameSpec| llm
+    loader -.->|GET по подписанным ссылкам| rustfs
+    ai -.->|Чтение исходников и запись результата| rustfs
+    ai -.->|Генерация / редактирование TypeScript| llm
     ai -->|OpenTelemetry · стартовый span| langfuse
-    langfuse -->|Бакет langfuse| minio
+    langfuse -->|Бакет langfuse| rustfs

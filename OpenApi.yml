@@ -18,15 +18,19 @@ info:
 
     Android обращается к Core по HTTPS. Core асинхронно передаёт задания
     AI-сервису через Kafka (game.generation.request / game.generation.result).
-    AI-сервис обращается к LLM по HTTPS и сохраняет GameSpec и ресурсы в MinIO.
+    AI-сервис генерирует TypeScript для Phaser, выполняет модерацию, сборку и тесты
+    в песочнице, оценивает соответствие запросу и только после допуска сохраняет
+    веб-пакет в RustFS. Полный целевой процесс описан в docs/game-generation.md.
     Kafka и внутренний AI-сервис не предоставляют публичный HTTP API. Все операции
     этого документа реализует Core; теги обозначают его функциональные модули.
     Контракт Kafka и внутренний манифест пакета описаны в README.md, разделы 7–8.
 
     Генерация возвращает 202 и идентификатор задания. Клиент опрашивает его статус.
     Результат успешной генерации — новая неизменяемая версия игры.
-    Игра исполняется встроенным Android runtime из game.json и ресурсов,
-    а не как произвольный сгенерированный исполняемый код.
+    Целевой плеер — Android WebView с Phaser и собранным JavaScript.
+    В формате v2 game.json является дескриптором загрузки веб-пакета.
+    Текущая реализация Core использует формат v1; переход на v2 требует
+    обновления валидатора, Kafka-схем и Android согласно docs/game-generation.md.
 
     Публикация закрепляет конкретную готовую версию. Новые генерации не меняют
     опубликованную версию до явной повторной публикации. Владелец видит свои
@@ -297,7 +301,7 @@ paths:
       tags: [Games]
       operationId: updateGameMetadata
       summary: Заменить название и описание своей игры
-      description: Меняет метаданные, не затрагивая GameSpec и опубликованную версию.
+      description: Меняет метаданные, не затрагивая пакет игры и опубликованную версию.
       requestBody:
         required: true
         content:
@@ -535,14 +539,16 @@ paths:
       security:
         - {}
         - bearerAuth: []
-      summary: Получить ссылки на GameSpec и ресурсы для запуска
+      summary: Получить ссылки на дескриптор и файлы игры для запуска
       description: |
         Доступ как для getGameVersion. Возвращает временные HTTPS GET URL
-        к game.json и ресурсам в MinIO. Клиент скачивает файлы напрямую,
-        проверяет SHA-256 и запускает GameSpec во встроенном runtime.
-        Пути ресурсов внутри GameSpec соответствуют полю path в assets.
-        Секреты MinIO не передаются. После истечения ссылок клиент повторяет запрос.
-        Схема самого GameSpec версионируется отдельно от HTTP API.
+        к game.json и ресурсам в RustFS. Клиент скачивает файлы напрямую,
+        проверяет SHA-256 и совместимость формата. В целевом формате v2
+        game.json указывает локальный index.html; assets включают HTML/JS/CSS
+        и ресурсы Phaser для запуска в ограниченном Android WebView.
+        Исходники и отчёт валидации не входят в публичный assets.
+        Секреты RustFS не передаются. После истечения ссылок клиент повторяет запрос.
+        Схема game.json версионируется отдельно от HTTP API.
       responses:
         '200':
           description: Манифест скачивания пакета
@@ -983,7 +989,7 @@ components:
         DRAFT обозначает любую неопубликованную игру, в том числе с готовыми версиями.
         author.id совпадает с ownerId; author.displayName — текущее имя автора.
         Название и описание общие для игры: изменение метаданных сразу видно
-        в каталоге, но не меняет опубликованную версию GameSpec.
+        в каталоге, но не меняет опубликованную версию игры.
       properties:
         id:
           type: string
@@ -1147,7 +1153,7 @@ components:
           format: uuid
         gameSpecVersion:
           type: string
-          description: Версия схемы game.json
+          description: Версия схемы game.json; в целевом формате 2.0 это дескриптор веб-пакета Phaser
           example: '1.0'
         runtimeVersion:
           type: string
@@ -1159,7 +1165,7 @@ components:
     GamePackage:
       description: |
         Пакет готовой неизменяемой версии. Core формирует URL из проверенного
-        внутреннего манифеста MinIO; bucket/key и служебные итоги AI не раскрываются.
+        внутреннего манифеста RustFS; bucket/key и служебные итоги AI не раскрываются.
         Android проверяет совместимость схемы и runtime перед запуском.
       type: object
       required: [gameId, versionId, gameSpecVersion, runtimeVersion, expiresAt, gameSpec, assets]
@@ -1194,7 +1200,7 @@ components:
                   enum: [application/json]
         assets:
           type: array
-          description: Все внешние ресурсы GameSpec; пути уникальны во всём пакете. Может быть пустым, если ресурсы не используются
+          description: Файлы пакета; в формате v2 включают index.html, JavaScript, CSS и ресурсы Phaser. Пути уникальны; исходники и отчёты не выдаются
           items:
             $ref: '#/components/schemas/PackageFile'
     PackageFile:

@@ -7,14 +7,14 @@ flowchart TD
         clickhouse[("ClickHouse · трейсы")]
         redis[("Redis · очередь Langfuse")]
     end
-    minio[("Общий MinIO · отдельный бакет langfuse")]
+    rustfs[("Общий RustFS · отдельный бакет langfuse")]
 
     ai -->|OpenTelemetry / HTTP| web
     web --> postgres
     web --> clickhouse
     web --> redis
-    web --> minio
+    web --> rustfs
     worker --> postgres
     worker --> clickhouse
     worker --> redis
-    worker --> minio
+    worker --> rustfs

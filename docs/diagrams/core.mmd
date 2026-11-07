@@ -11,7 +11,7 @@ flowchart TD
     db[("PostgreSQL · пользователи / игры / версии / задания / Outbox / события")]
     request["Kafka · game.generation.request"]
     result["Kafka · game.generation.result"]
-    minio[("MinIO · playly-games")]
+    rustfs[("RustFS · playly-games")]
 
     api --> auth
     api --> games
@@ -25,4 +25,4 @@ flowchart TD
     results -->|Событие, статус и версия в одной транзакции| db
     results -->|Проверка пакета перед применением успеха| storage
     games -->|Выдача GamePackage| storage
-    storage -->|S3 API| minio
+    storage -->|S3 API| rustfs

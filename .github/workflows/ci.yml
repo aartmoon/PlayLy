@@ -56,6 +56,8 @@ jobs:
             ai.cache-to=type=gha,scope=playly-ai-smoke,mode=max
       - run: |
           docker compose up -d --no-build --wait --wait-timeout 240 traefik core ai langfuse-worker
+          docker compose run --rm --no-deps storage-init
+          docker compose run --rm --no-deps --entrypoint /bin/sh storage-init /storage/smoke.sh
           curl --fail --silent --show-error --retry 30 --retry-all-errors --retry-delay 1 http://127.0.0.1:8080/actuator/health
           api=http://127.0.0.1:8080/api/v1
           curl -fsS "$api/catalog/games" | jq -e '.items == [] and .nextCursor == null'

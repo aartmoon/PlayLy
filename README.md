@@ -386,11 +386,7 @@ Traefik принимает локальные HTTP-запросы на порт�
 
 Локальный стенд использует официальный образ `rustfs/rustfs:1.0.4`. Источник образа можно задать через `RUSTFS_IMAGE` в `.env`. Одноразовый сервис `storage-init` создаёт бакеты `S3_GAME_BUCKET` (по умолчанию `playly-games`) и `langfuse` через S3 API до запуска Core и Langfuse. Повторный запуск сохраняет существующие бакеты и объекты.
 
-Core использует S3-совместимый Java-клиент `io.minio:minio`; сервер MinIO и утилита `mc` для работы стенда не нужны. Внутренний адрес задаётся через `S3_ENDPOINT`, клиентский адрес подписанных ссылок — через `S3_PUBLIC_ENDPOINT`. Для отдельных учётных данных Core используйте `PLAYLY_S3_ACCESS_KEY` и `PLAYLY_S3_SECRET_KEY`; соответствующего пользователя и права нужно создать в RustFS.
-
-При переходе с MinIO RustFS использует новый том `rustfs-data`. Старый том `minio-data` не переиспользуется и не удаляется: формат данных нельзя переносить подменой тома. Если нужны прежние пакеты игр или события Langfuse, скопируйте оба бакета через S3 API перед переключением сервисов. В существующем `.env` переименуйте `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` в `RUSTFS_ACCESS_KEY`/`RUSTFS_SECRET_KEY`, `MINIO_GAME_BUCKET` в `S3_GAME_BUCKET`, `MINIO_PUBLIC_ENDPOINT` в `S3_PUBLIC_ENDPOINT`, `MINIO_API_PORT`/`MINIO_CONSOLE_PORT` в `RUSTFS_API_PORT`/`RUSTFS_CONSOLE_PORT`, а `PLAYLY_MINIO_ACCESS_KEY`/`PLAYLY_MINIO_SECRET_KEY` в `PLAYLY_S3_ACCESS_KEY`/`PLAYLY_S3_SECRET_KEY`.
-
-После переноса объектов переключите существующий стенд командой `docker compose up -d --build --remove-orphans`: она удалит старый контейнер MinIO, освободив порты 9000/9001, и сохранит его том. Если был задан `MINIO_IMAGE`, удалите его; для RustFS нужен собственный образ `RUSTFS_IMAGE`.
+Core использует AWS SDK for Java v2 с S3 API RustFS. Внутренний адрес задаётся через `S3_ENDPOINT`, клиентский адрес подписанных ссылок — через `S3_PUBLIC_ENDPOINT`. Для отдельных учётных данных Core используйте `PLAYLY_S3_ACCESS_KEY` и `PLAYLY_S3_SECRET_KEY`; соответствующего пользователя и права нужно создать в RustFS. Данные хранятся в томе `rustfs-data`, образ задаётся через `RUSTFS_IMAGE`.
 
 Проверка S3 после запуска: `docker compose run --rm --no-deps --entrypoint /bin/sh storage-init /storage/smoke.sh`. Она проверяет запись, подписанное скачивание, список объектов и удаление в обоих бакетах, затем убирает свои временные объекты. CI также повторяет инициализацию бакетов, чтобы проверять повторный запуск.
 

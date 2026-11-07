@@ -41,11 +41,10 @@ class PackageCleanup {
         var cutoff = Instant.now().minusSeconds(storage.retentionSeconds());
         String previousPrefix = null;
         boolean protectedAttempt = true;
-        for (var result : storage.generationObjects()) {
+        for (var item : storage.generationObjects()) {
             try {
-                var item = result.get();
-                if (!item.lastModified().toInstant().isBefore(cutoff)) continue;
-                String key = item.objectName();
+                if (!item.lastModified().isBefore(cutoff)) continue;
+                String key = item.key();
                 String[] parts = key.split("/", 4);
                 if (parts.length != 4 || !PackageVerifier.ATTEMPT.matcher(parts[2]).matches()) continue;
                 UUID id;

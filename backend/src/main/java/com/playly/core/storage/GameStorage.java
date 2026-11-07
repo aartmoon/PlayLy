@@ -1,16 +1,21 @@
 package com.playly.core.storage;
 
-import io.minio.GetObjectArgs;
-import io.minio.GetPresignedObjectUrlArgs;
-import io.minio.ListObjectsArgs;
-import io.minio.MinioClient;
-import io.minio.RemoveObjectArgs;
-import io.minio.errors.ErrorResponseException;
-import io.minio.http.Method;
+import jakarta.annotation.PreDestroy;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3Configuration;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.services.s3.model.S3Object;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
+import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -37,8 +42,8 @@ public class GameStorage {
         }
     }
 
-    private final MinioClient internal;
-    private final MinioClient publicSigner;
+    private final S3Client internal;
+    private final S3Presigner publicSigner;
     private final String bucket;
     private final int urlTtl;
     private final long retentionSeconds;
@@ -54,10 +59,18 @@ public class GameStorage {
         this.bucket = bucket;
         this.urlTtl = Math.toIntExact(urlTtl.toSeconds());
         this.retentionSeconds = cleanupGrace.plus(urlTtl).plus(generationDeadline).toSeconds();
-        // This SDK talks S3 to RustFS; the public signer must use the same region.
-        this.internal = MinioClient.builder().endpoint(endpoint).region("us-east-1").credentials(accessKey, secretKey).build();
-        this.internal.setTimeout(2_000, 5_000, 5_000);
-        this.publicSigner = MinioClient.builder().endpoint(publicEndpoint).region("us-east-1").credentials(accessKey, secretKey).build();
+        var credentials = StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKey, secretKey));
+        var s3 = S3Configuration.builder().pathStyleAccessEnabled(true)
+                .checksumValidationEnabled(false).build();
+        this.internal = S3Client.builder().endpointOverride(URI.create(endpoint)).region(Region.US_EAST_1)
+                .credentialsProvider(credentials).serviceConfiguration(s3)
+                .httpClientBuilder(UrlConnectionHttpClient.builder()
+                        .connectionTimeout(Duration.ofSeconds(2)).socketTimeout(Duration.ofSeconds(5)))
+                .overrideConfiguration(config -> config.apiCallTimeout(Duration.ofSeconds(15)))
+                .build();
+        // Sign for the client-facing host without making a request to that endpoint.
+        this.publicSigner = S3Presigner.builder().endpointOverride(URI.create(publicEndpoint))
+                .region(Region.US_EAST_1).credentialsProvider(credentials).serviceConfiguration(s3).build();
     }
 
     public long retentionSeconds() {
@@ -76,9 +89,9 @@ public class GameStorage {
 
     InputStream open(String key) {
         try {
-            return internal.getObject(GetObjectArgs.builder().bucket(bucket).object(key).build());
-        } catch (ErrorResponseException error) {
-            if ("NoSuchKey".equals(error.errorResponse().code())) throw new InvalidPackage();
+            return internal.getObject(GetObjectRequest.builder().bucket(bucket).key(key).build());
+        } catch (S3Exception error) {
+            if (error.awsErrorDetails() != null && "NoSuchKey".equals(error.awsErrorDetails().errorCode())) throw new InvalidPackage();
             throw new StorageUnavailable(error);
         } catch (Exception error) {
             throw new StorageUnavailable(error);
@@ -87,8 +100,9 @@ public class GameStorage {
 
     private PackageFile sign(StoredFile file) {
         try {
-            String url = publicSigner.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
-                    .method(Method.GET).bucket(bucket).object(file.key()).expiry(urlTtl).build());
+            String url = publicSigner.presignGetObject(request -> request
+                    .signatureDuration(Duration.ofSeconds(urlTtl))
+                    .getObjectRequest(object -> object.bucket(bucket).key(file.key()))).url().toExternalForm();
             return new PackageFile(file.path(), url, file.mediaType(), file.sizeBytes(), file.sha256());
         } catch (Exception error) {
             throw new StorageUnavailable(error);
@@ -99,12 +113,20 @@ public class GameStorage {
         return bucket;
     }
 
-    Iterable<io.minio.Result<io.minio.messages.Item>> generationObjects() {
-        return internal.listObjects(ListObjectsArgs.builder().bucket(bucket)
-                .prefix("generations/").recursive(true).build());
+    Iterable<S3Object> generationObjects() {
+        return internal.listObjectsV2Paginator(request -> request.bucket(bucket).prefix("generations/")).contents();
     }
 
-    void remove(String key) throws Exception {
-        internal.removeObject(RemoveObjectArgs.builder().bucket(bucket).object(key).build());
+    void remove(String key) {
+        internal.deleteObject(request -> request.bucket(bucket).key(key));
+    }
+
+    @PreDestroy
+    void close() {
+        try {
+            publicSigner.close();
+        } finally {
+            internal.close();
+        }
     }
 }

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none';">
+    <title>Монетки на закате · PlayLy</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="/src/style.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="game-header">
+        <div>
+          <h1>Монетки на закате</h1>
+          <p>Помоги коту собрать все монеты.</p>
+        </div>
+        <div class="score">
+          <span class="coin-icon" aria-hidden="true"></span>
+          <output id="coins" aria-label="Собрано монет" aria-live="polite"></output>
+        </div>
+      </header>
+
+      <div class="screen">
+        <div id="game" aria-label="Игровое поле"></div>
+        <p id="win" class="win" role="status" hidden>Все монеты собраны!</p>
+      </div>
+
+      <div class="controls" aria-label="Управление игрой">
+        <div class="directions">
+          <button id="left" type="button" aria-label="Влево">←</button>
+          <button id="right" type="button" aria-label="Вправо">→</button>
+        </div>
+        <button id="restart" class="restart" type="button">Заново</button>
+        <button id="jump" class="jump" type="button">↑ <span>Прыжок</span></button>
+      </div>
+      <p class="keys"><kbd>←</kbd> <kbd>→</kbd> Движение <span>·</span> <kbd>Пробел</kbd> Прыжок</p>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

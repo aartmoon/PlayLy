@@ -120,9 +120,9 @@ Core Service является владельцем основной базы д�
 | База данных | PostgreSQL |
 | Асинхронное взаимодействие | Apache Kafka, Spring Kafka |
 | AI Generation Service | Java 25, Gradle |
-| Интеграция с LLM | HTTP API (TODO) |
+| Интеграция с LLM | Chat Completions API для локальных [`game/plan`](docs/game-generation.md#локальный-запуск-gameplan) и [`game/generate`](docs/game-generation.md#локальный-запуск-gamegenerate) |
 | Трассировка и оценка AI | OpenTelemetry, локальный Langfuse, версионированные prompts и scores |
-| Контракт ответа AI | JSON-план с группами файлов и ссылками на разрешённые ассеты, затем JSON-ответы с файлами по каждой группе (JSON Schema — TODO) |
+| Контракт ответа AI | JSON Schema [плана](ai/src/main/resources/game/plan.schema.json) и [группы файлов](ai/src/main/resources/game/files.schema.json) |
 | Сборка и тесты игр | TypeScript, Vite, Playwright / Chromium в изолированном runner (TODO реализации) |
 | Объектное хранилище | RustFS (S3-compatible API) |
 | Android | Kotlin, Jetpack Compose |
@@ -350,7 +350,7 @@ AI может читать разрешённую библиотеку и исх
 |---|---|
 | `mobile/` | Android-приложение с одним экраном на Kotlin и Jetpack Compose |
 | `backend/` | Core Service на Java 25 и Spring Boot 4.1 с REST API, PostgreSQL, Kafka и RustFS |
-| `ai/` | Java 25, процесс-заглушка AI Generation Service |
+| `ai/` | Java 25, каркас AI-воркера и локальные команды `planGame` и `generateGame` |
 | `compose.yaml` | Traefik, Core, AI, PostgreSQL, Redis, Kafka в режиме KRaft, RustFS и Langfuse с локальными томами |
 
 Core обслуживает маршруты `/api/v1` из OpenAPI и применяет миграции Flyway при старте. PostgreSQL доступен только в сети Core и БД. В текущем каркасе AI работает как заглушка. Чтобы получить готовую версию, нужен воркер, который сохранит пакет и пришлёт событие `SUCCEEDED`. Без события задание завершится по дедлайну.

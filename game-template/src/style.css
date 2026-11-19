@@ -1,0 +1,181 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #fff3d9;
+  background: #191423;
+  color-scheme: dark;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  place-items: center;
+  min-height: 100svh;
+  padding: 24px 14px;
+  background: radial-gradient(ellipse at 50% 0%, #38233d, transparent 72%);
+}
+
+.shell {
+  width: min(100%, 860px);
+}
+
+.game-header, .controls, .directions, .score {
+  display: flex;
+  align-items: center;
+}
+
+.game-header {
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(1.45rem, 5vw, 2.6rem);
+  line-height: 1.05;
+  letter-spacing: -0.055em;
+}
+
+p {
+  margin: 6px 0 0;
+  color: #e0bfcf;
+}
+
+.score {
+  flex: none;
+  justify-content: center;
+  gap: 9px;
+  min-width: 95px;
+  padding: 9px 12px;
+  border: 1px solid #78565e;
+  border-radius: 14px;
+  background: #352436;
+  color: #ffdc91;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.coin-icon {
+  width: 16px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid #ffdf89;
+  background: #de8d42;
+  box-shadow: inset 0 0 0 2px #f7bd5c;
+}
+
+.screen {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 880 / 480;
+  border: 1px solid #765368;
+  border-radius: 17px;
+  background: #654366;
+  box-shadow: 0 18px 50px #0e0a1480;
+}
+
+#game {
+  width: 100%;
+  height: 100%;
+}
+
+#game canvas {
+  display: block;
+}
+
+.win {
+  position: absolute;
+  top: 9%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 94%;
+  padding: 10px 16px;
+  border: 1px solid #ffe5a1;
+  border-radius: 12px;
+  color: #332033;
+  background: #ffdc91;
+  font-weight: 800;
+  text-align: center;
+}
+
+.controls {
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.directions {
+  gap: 8px;
+}
+
+button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 7px clamp(8px, 2vw, 16px);
+  border: 1px solid #775a71;
+  border-radius: 12px;
+  background: #352739;
+  color: #fff3d9;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+}
+
+.directions button {
+  font-size: 1.25rem;
+}
+
+button:active {
+  background: #654564;
+}
+
+button:focus-visible {
+  outline: 2px solid #ffdc91;
+  outline-offset: 3px;
+}
+
+.jump {
+  color: #332033;
+  background: #ffce83;
+  border-color: #ffde9e;
+}
+
+.jump:active {
+  background: #f0a65f;
+}
+
+.keys {
+  margin: 10px 0 0;
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.keys span {
+  margin: 0 5px;
+}
+
+kbd {
+  font: inherit;
+  font-weight: 750;
+}
+
+@media (max-width: 390px) {
+  .game-header p {
+    font-size: 0.85rem;
+  }
+}
+
+@media (pointer: coarse) {
+  .keys {
+    display: none;
+  }
+}

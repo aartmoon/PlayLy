@@ -44,9 +44,16 @@ tasks.register<JavaExec>("planGame") {
 
 tasks.register<JavaExec>("generateGame") {
     group = "application"
-    description = "Generate and validate TypeScript source files for a game plan."
+    description = "Generate, build and smoke-test a Phaser game."
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("com.playly.ai.plan.GameGenerationCli")
+}
+
+tasks.processResources {
+    from("../game-template/src") {
+        include("*.ts")
+        into("game/examples")
+    }
 }
 
 tasks.test {

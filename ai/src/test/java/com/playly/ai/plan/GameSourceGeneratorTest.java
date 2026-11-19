@@ -1,133 +1,139 @@
 package com.playly.ai.plan;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GameSourceGeneratorTest {
-    private static final String PROMPT = "Кот собирает монеты";
-    private static final GamePlan PLAN = GamePlan.parse("""
-            {
-              "entryPoint": "src/main.ts",
-              "assetRefs": [],
-              "requirements": [{"id": "coins", "description": "Собирать монеты"}],
-              "groups": [
-                {"id": "rules", "dependsOn": [], "files": [
-                  {"path": "src/rules.ts", "purpose": "Coin rules", "contracts": ["export function points(): number"]}
-                ]},
-                {"id": "scene", "dependsOn": ["rules"], "files": [
-                  {"path": "src/scenes/CatScene.ts", "purpose": "Play scene", "contracts": ["export CatScene"]}
-                ]},
-                {"id": "boot", "dependsOn": ["scene"], "files": [
-                  {"path": "src/main.ts", "purpose": "Start Phaser", "contracts": []},
-                  {"path": "src/settings.ts", "purpose": "Game settings", "contracts": []}
-                ]}
-              ]
-            }
-            """, Set.of());
-    private static final String RULES = "export const points = () => 10;";
-    private static final String SCENE = "import { points } from '../rules';\nexport class CatScene {}";
+    @Test
+    void sendsExamplesFirstAndCarriesForwardAcceptedFiles() throws Exception {
+        var contexts = new ArrayList<String>();
+        var generator = new GameSourceGenerator((instructions, context) -> {
+            contexts.add(context);
+            return contexts.size() == 1
+                    ? batch("src/scenes/Game.ts", "class Game {}", false)
+                    : batch("src/main.ts", "import './scenes/Game'", true);
+        });
+        var files = generator.generate("Make a tower defense", Map.of("Main.ts", "example"), List::copyOf);
+
+        assertEquals(List.of("src/scenes/Game.ts", "src/main.ts"),
+                files.stream().map(GeneratedSources.SourceFile::path).toList());
+        var first = JsonParser.parseString(contexts.getFirst()).getAsJsonObject();
+        var second = JsonParser.parseString(contexts.getLast()).getAsJsonObject();
+        assertEquals("example", first.getAsJsonObject("examples").get("Main.ts").getAsString());
+        assertEquals("class Game {}", second.getAsJsonArray("currentFiles").get(0).getAsJsonObject()
+                .get("content").getAsString());
+        assertEquals("Connect the entry point", second.get("remaining").getAsString());
+    }
 
     @Test
-    void generatesInPlanOrderWithOnlyDeclaredDependencySources() throws Exception {
-        var requests = new ArrayList<JsonObject>();
+    void limitsIncompleteGenerationToFiveCalls() throws Exception {
+        var calls = new AtomicInteger();
         var generator = new GameSourceGenerator((instructions, context) -> {
-            assertTrue(instructions.contains("PlayLy generated file group"));
-            var request = JsonParser.parseString(context).getAsJsonObject();
-            requests.add(request);
-            assertEquals(PROMPT, request.get("brief").getAsString());
-            assertEquals("coins", request.getAsJsonArray("requirements").get(0).getAsJsonObject().get("id").getAsString());
-            return switch (request.getAsJsonObject("group").get("id").getAsString()) {
-                case "rules" -> response(file("rules.ts", "src", RULES));
-                case "scene" -> response(file("CatScene.ts", "src/scenes", SCENE));
-                case "boot" -> response(file("settings.ts", "src", "export const width = 320;"),
-                        file("main.ts", "src", "import { CatScene } from './scenes/CatScene';"));
-                default -> throw new AssertionError("Unexpected group");
+            calls.incrementAndGet();
+            return batch("src/scenes/Game.ts", "class Game {}", false);
+        });
+        var failure = assertThrows(IOException.class, () -> generator.generate("Make a platformer", Map.of(), files -> {
+            throw new AssertionError("An incomplete game reached the sandbox");
+        }));
+        assertTrue(failure.getMessage().contains("five"));
+        assertEquals(5, calls.get());
+    }
+
+    @Test
+    void repairsOnlyAffectedFilesAfterRejectedBuild() throws Exception {
+        var calls = new AtomicInteger();
+        var builds = new AtomicInteger();
+        var generator = new GameSourceGenerator((instructions, context) -> {
+            return switch (calls.incrementAndGet()) {
+                case 1 -> batch("src/controls.ts", "export const controls = 1", false);
+                case 2 -> batch("src/main.ts", "broken", true);
+                default -> {
+                    assertTrue(context.contains("Missing import"));
+                    yield batch("src/main.ts", "fixed", true);
+                }
             };
         });
-
-        var sources = generator.generate(PLAN, PROMPT);
-
-        assertEquals(1, sources.responseVersion());
-        assertEquals(List.of("rules.ts", "CatScene.ts", "main.ts", "settings.ts"),
-                sources.files().stream().map(GeneratedSources.SourceFile::name).toList());
-        assertEquals(3, requests.size());
-        assertTrue(requests.get(0).getAsJsonArray("dependencies").isEmpty());
-        assertEquals(RULES, dependencySource(requests.get(1)));
-        assertEquals(SCENE, dependencySource(requests.get(2)));
-    }
-
-    @Test
-    void retriesOnlyTheRejectedGroupAndStopsAfterTheSecondInvalidResponse() {
-        var instructions = new ArrayList<String>();
-        var contexts = new ArrayList<String>();
-        var generator = new GameSourceGenerator((system, context) -> {
-            instructions.add(system);
-            contexts.add(context);
-            if (contexts.size() == 1) {
-                return response(file("rules.ts", "src", RULES));
+        var result = generator.generate("Make a platformer", Map.of(), files -> {
+            if (builds.incrementAndGet() == 1) {
+                throw new GameSourceGenerator.RejectedBuild("Missing import");
             }
-            return response(file("OtherScene.ts", "src/scenes", SCENE));
+            return files;
         });
 
-        assertThrows(IllegalArgumentException.class, () -> generator.generate(PLAN, PROMPT));
-        assertEquals(3, contexts.size());
-        assertEquals(contexts.get(1), contexts.get(2));
-        assertTrue(instructions.get(2).contains("previous response was rejected"));
+        assertEquals(3, calls.get());
+        assertEquals(2, builds.get());
+        assertEquals(List.of("export const controls = 1", "fixed"),
+                result.stream().map(GeneratedSources.SourceFile::content).toList());
     }
 
     @Test
-    void acceptsAValidCorrectionAndContinues() throws Exception {
-        var calls = new ArrayList<String>();
-        var replies = List.of("plain text", response(file("rules.ts", "src", RULES)),
-                response(file("CatScene.ts", "src/scenes", SCENE)),
-                response(file("main.ts", "src", "new Phaser.Game(config);"),
-                        file("settings.ts", "src", "export const width = 320;")));
-        var generator = new GameSourceGenerator((system, context) -> {
-            calls.add(context);
-            return replies.get(calls.size() - 1);
+    void limitsRepairsAndDoesNotRetryInfrastructureFailures() throws Exception {
+        var calls = new AtomicInteger();
+        var generator = new GameSourceGenerator((instructions, context) -> {
+            calls.incrementAndGet();
+            return batch("src/main.ts", "broken", true);
         });
 
-        assertEquals(4, generator.generate(PLAN, PROMPT).files().size());
-        assertEquals(4, calls.size());
-        assertEquals(calls.get(0), calls.get(1));
+        assertThrows(IOException.class, () -> generator.generate("Make a platformer", Map.of(), files -> {
+            throw new GameSourceGenerator.RejectedBuild("Canvas missing");
+        }));
+        assertEquals(3, calls.get());
+        calls.set(0);
+        assertThrows(IOException.class, () -> generator.generate("Make a platformer", Map.of(), files -> {
+            throw new IOException("Docker stopped");
+        }));
+        assertEquals(1, calls.get());
     }
 
     @Test
-    void rejectsWrongVersionMissingFilesDuplicateFilesAndInvalidPaths() {
-        var group = PLAN.groups().getLast();
-        var main = file("main.ts", "src", "export {};");
-        var settings = file("settings.ts", "src", "export {};");
-        var valid = response(main, settings);
-        for (var invalid : List.of(valid.replace("\"responseVersion\":1", "\"responseVersion\":2"),
-                response(main), response(main, main),
-                response(main, file("settings.ts", "src/../src", "export {};")),
-                response(main, file("settings.ts", "src", " ")),
-                response(main, file("settings.ts", "src", "x".repeat(128 * 1024))))) {
-            assertThrows(IllegalArgumentException.class, () -> GeneratedSources.parseGroup(invalid, group));
-        }
+    void keepsBuildDiagnosticsWhenRepairRequestFails() throws Exception {
+        var calls = new AtomicInteger();
+        var generator = new GameSourceGenerator((instructions, context) -> {
+            if (calls.incrementAndGet() == 1) {
+                return batch("src/main.ts", "broken", true);
+            }
+            throw new IOException("Model API returned HTTP 402.");
+        });
+
+        var failure = assertThrows(IOException.class, () -> generator.generate("Make a platformer", Map.of(), files -> {
+            throw new GameSourceGenerator.RejectedBuild("TypeScript compilation failed");
+        }));
+        assertTrue(failure.getMessage().contains("HTTP 402"));
+        assertTrue(failure.getMessage().contains("TypeScript compilation failed"));
+        assertEquals(2, calls.get());
     }
 
-    private static String dependencySource(JsonObject request) {
-        var dependencies = request.getAsJsonArray("dependencies");
-        assertEquals(1, dependencies.size());
-        return dependencies.get(0).getAsJsonObject().get("content").getAsString();
+    @Test
+    void rejectsPathsOutsideGeneratedTypescriptAndRequiresEntryPoint() throws Exception {
+        assertThrows(IllegalArgumentException.class, () -> GeneratedSources.parse(batch("src/../config.ts", "code", true)));
+        assertThrows(IllegalArgumentException.class, () -> GeneratedSources.parse(batch("index.html", "code", true)));
+        assertThrows(IllegalArgumentException.class, () -> GeneratedSources.parse(batch("src/global.d.ts", "code", true)));
+
+        var contexts = new ArrayList<String>();
+        var generator = new GameSourceGenerator((instructions, context) -> {
+            contexts.add(context);
+            return contexts.size() == 1
+                    ? batch("src/Game.ts", "class Game {}", true)
+                    : batch("src/main.ts", "class Main {}", true);
+        });
+        var files = generator.generate("Make a puzzle", Map.of(), List::copyOf);
+        assertEquals(1, files.size());
+        assertTrue(contexts.getLast().contains("must include src/main.ts"));
     }
 
-    private static String response(GeneratedSources.SourceFile... files) {
-        return new Gson().toJson(new GeneratedSources(1, List.of(files)));
-    }
-
-    private static GeneratedSources.SourceFile file(String name, String path, String source) {
-        return new GeneratedSources.SourceFile(name, path, source);
+    private static String batch(String path, String content, boolean done) {
+        return """
+                {"files":[{"path":"%s","content":"%s"}],"done":%s,"remaining":"%s"}
+                """.formatted(path, content, done, done ? "" : "Connect the entry point");
     }
 }

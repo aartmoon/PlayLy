@@ -1,0 +1,4 @@
+html, body, #game { width: 100%; height: 100%; margin: 0; }
+body { background: #15151a; overflow: hidden; }
+#game { display: grid; place-items: center; touch-action: none; }
+#game canvas { display: block; }

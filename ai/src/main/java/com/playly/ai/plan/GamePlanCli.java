@@ -17,7 +17,7 @@ public final class GamePlanCli {
         }
 
         try (var http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build()) {
-            var model = ChatCompletionsClient.fromEnvironment(http, "planGame");
+            var model = ChatCompletionsClient.fromEnvironment(http, "planGame", "/game/plan.schema.json");
             var plan = new GamePlanner(model).create(args[0]);
             System.out.println(new GsonBuilder().setPrettyPrinting().create().toJson(plan));
         } catch (IllegalArgumentException | IOException exception) {

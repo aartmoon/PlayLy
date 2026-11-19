@@ -8,6 +8,7 @@ import com.google.gson.Strictness;
 import com.google.gson.annotations.SerializedName;
 
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -21,14 +22,23 @@ import java.util.Set;
 final class ChatCompletionsClient {
     private static final Gson JSON = new GsonBuilder().setStrictness(Strictness.STRICT).create();
     private static final int MAX_RESPONSE_BYTES = 512 * 1024;
+    private static final int DEFAULT_TIMEOUT_SECONDS = 180;
     private static final Set<String> LOOPBACK_HOSTS = Set.of("localhost", "127.0.0.1", "[::1]");
 
     private final HttpClient http;
     private final URI endpoint;
     private final String model;
     private final String apiKey;
+    private final Duration requestTimeout;
+    private final ResponseFormat responseFormat;
+    private final String reasoningEffort;
 
     ChatCompletionsClient(HttpClient http, URI endpoint, String model, String apiKey) {
+        this(http, endpoint, model, apiKey, Duration.ofSeconds(DEFAULT_TIMEOUT_SECONDS), null, null);
+    }
+
+    private ChatCompletionsClient(HttpClient http, URI endpoint, String model, String apiKey,
+                                  Duration requestTimeout, ResponseFormat responseFormat, String reasoningEffort) {
         var host = endpoint.getHost();
         if (host == null || endpoint.getUserInfo() != null || endpoint.getFragment() != null
                 || !("https".equalsIgnoreCase(endpoint.getScheme())
@@ -39,9 +49,13 @@ final class ChatCompletionsClient {
         this.endpoint = endpoint;
         this.model = model;
         this.apiKey = apiKey;
+        this.requestTimeout = requestTimeout;
+        this.responseFormat = responseFormat;
+        this.reasoningEffort = reasoningEffort;
     }
 
-    static ChatCompletionsClient fromEnvironment(HttpClient http, String command) {
+    static ChatCompletionsClient fromEnvironment(HttpClient http, String command, String schemaResource)
+            throws IOException {
         var url = requiredEnv("PLAYLY_LLM_URL", command);
         URI endpoint;
         try {
@@ -49,8 +63,41 @@ final class ChatCompletionsClient {
         } catch (IllegalArgumentException exception) {
             throw new IllegalArgumentException("PLAYLY_LLM_URL is not a valid URL.");
         }
+        var reasoningEffort = System.getenv("PLAYLY_LLM_REASONING_EFFORT");
         return new ChatCompletionsClient(http, endpoint, requiredEnv("PLAYLY_LLM_MODEL", command),
-                System.getenv().getOrDefault("PLAYLY_LLM_API_KEY", ""));
+                System.getenv().getOrDefault("PLAYLY_LLM_API_KEY", ""), timeoutFromEnvironment(),
+                responseFormatFromEnvironment(command, schemaResource),
+                reasoningEffort == null || reasoningEffort.isBlank() ? null : reasoningEffort);
+    }
+
+    private static ResponseFormat responseFormatFromEnvironment(String command, String schemaResource)
+            throws IOException {
+        if (!Boolean.parseBoolean(System.getenv("PLAYLY_LLM_STRUCTURED_OUTPUT"))) {
+            return null;
+        }
+        try (var stream = ChatCompletionsClient.class.getResourceAsStream(schemaResource)) {
+            if (stream == null) {
+                throw new IOException("Missing model response schema: " + schemaResource);
+            }
+            var schema = JSON.fromJson(new InputStreamReader(stream, StandardCharsets.UTF_8), JsonElement.class);
+            return new ResponseFormat("json_schema", new ResponseSchema(command, true, schema));
+        }
+    }
+
+    private static Duration timeoutFromEnvironment() {
+        var value = System.getenv("PLAYLY_LLM_TIMEOUT_SECONDS");
+        if (value == null || value.isBlank()) {
+            return Duration.ofSeconds(DEFAULT_TIMEOUT_SECONDS);
+        }
+        try {
+            int seconds = Integer.parseInt(value);
+            if (seconds > 0) {
+                return Duration.ofSeconds(seconds);
+            }
+        } catch (NumberFormatException ignored) {
+            // Report the configuration error without printing the environment value.
+        }
+        throw new IllegalArgumentException("PLAYLY_LLM_TIMEOUT_SECONDS must be a positive integer.");
     }
 
     private static String requiredEnv(String name, String command) {
@@ -62,9 +109,10 @@ final class ChatCompletionsClient {
     }
 
     String complete(String instructions, String prompt) throws IOException, InterruptedException {
-        var payload = new Request(model, List.of(new Message("system", instructions), new Message("user", prompt)));
+        var payload = new Request(model, List.of(new Message("system", instructions), new Message("user", prompt)),
+                responseFormat, reasoningEffort);
         var request = HttpRequest.newBuilder(endpoint)
-                .timeout(Duration.ofSeconds(60))
+                .timeout(requestTimeout)
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(JSON.toJson(payload), StandardCharsets.UTF_8));
@@ -112,7 +160,11 @@ final class ChatCompletionsClient {
         return content.getAsString();
     }
 
-    private record Request(String model, List<Message> messages) {}
+    private record Request(String model, List<Message> messages,
+                           @SerializedName("response_format") ResponseFormat responseFormat,
+                           @SerializedName("reasoning_effort") String reasoningEffort) {}
+    private record ResponseFormat(String type, @SerializedName("json_schema") ResponseSchema schema) {}
+    private record ResponseSchema(String name, boolean strict, JsonElement schema) {}
     private record Message(String role, String content) {}
     private record Completion(List<Choice> choices) {}
     private record Choice(@SerializedName("finish_reason") String finishReason, Reply message) {}

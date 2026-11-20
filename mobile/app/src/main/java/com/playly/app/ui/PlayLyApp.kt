@@ -2,7 +2,7 @@ package com.playly.app.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -16,7 +16,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -90,7 +89,7 @@ private fun AppBar(overlay: Overlay?, send: (Message) -> Unit) {
         title = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
                 if (overlay == null) {
-                    Image(painterResource(R.drawable.ic_playly), contentDescription = null, Modifier.size(Space.xxl))
+                    PlayLyMark()
                 }
                 Text(stringResource(title), style = MaterialTheme.typography.titleMedium)
             }
@@ -136,7 +135,7 @@ internal fun AppNavigation(selected: Tab, onSelect: ((Tab) -> Unit)? = null) {
                 icon = { Icon(icon, contentDescription = null) },
                 label = { Text(stringResource(label), maxLines = 2) },
                 colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = MaterialTheme.colorScheme.secondary,
+                    selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
                     selectedTextColor = MaterialTheme.colorScheme.secondary,
                     indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
                 ),
@@ -169,7 +168,13 @@ internal fun LoadingIndicator() {
 
 @Composable
 internal fun PrimaryButton(label: Int, enabled: Boolean = true, action: () -> Unit) {
-    Button(onClick = action, enabled = enabled, modifier = Modifier.fillMaxWidth().heightIn(min = Space.touch)) {
+    val accent = playLyAccent
+    val scheme = MaterialTheme.colorScheme
+    Button(
+        onClick = action, enabled = enabled, modifier = Modifier.fillMaxWidth().heightIn(min = Space.touch),
+        colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = accentForeground(accent)),
+        border = if (enabled && contrastRatio(accent, scheme.background) < 3f) BorderStroke(Space.outline, scheme.primary) else null,
+    ) {
         Text(stringResource(label))
     }
 }

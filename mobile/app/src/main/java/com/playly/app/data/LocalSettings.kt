@@ -20,8 +20,13 @@ enum class ThemeMode { LIGHT, DARK, CUSTOM }
 data class Appearance(
     val mode: ThemeMode = ThemeMode.DARK,
     val accent: Int = 0xFFC6FF4D.toInt(),
-    val customDark: Boolean = true,
-)
+    val background: Int = DEFAULT_CUSTOM_BACKGROUND,
+) {
+    companion object {
+        const val DEFAULT_CUSTOM_BACKGROUND = 0xFF10110F.toInt()
+        const val LEGACY_LIGHT_BACKGROUND = 0xFFFAFBF4.toInt()
+    }
+}
 
 data class GenerationTicket(
     val id: UUID,
@@ -41,12 +46,16 @@ class LocalSettings @Inject constructor(context: Context) {
     fun readAppearance() = Appearance(
         mode = ThemeMode.entries.firstOrNull { it.name == preferences.getString("mode", null) } ?: ThemeMode.DARK,
         accent = preferences.getInt("accent", Appearance().accent),
-        customDark = preferences.getBoolean("custom_dark", true),
+        background = preferences.getInt(
+            "background",
+            if (preferences.getBoolean("custom_dark", true)) Appearance.DEFAULT_CUSTOM_BACKGROUND
+            else Appearance.LEGACY_LIGHT_BACKGROUND,
+        ),
     )
 
     fun writeAppearance(value: Appearance) {
         preferences.edit().putString("mode", value.mode.name)
-            .putInt("accent", value.accent).putBoolean("custom_dark", value.customDark).apply()
+            .putInt("accent", value.accent).putInt("background", value.background).remove("custom_dark").apply()
     }
 
     fun readTicket(ownerId: UUID): GenerationTicket? =

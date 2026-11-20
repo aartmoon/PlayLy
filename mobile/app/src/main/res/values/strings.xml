@@ -72,11 +72,12 @@
     <string name="theme_light">Светлая</string>
     <string name="theme_dark">Тёмная</string>
     <string name="theme_custom">Своя</string>
-    <string name="theme_accent">Основной цвет</string>
-    <string name="accent_accessibility">Цвет %1$s</string>
-    <string name="theme_hex">Цвет HEX</string>
+    <string name="theme_background">Цвет фона</string>
+    <string name="theme_accent">Цвет подсветки</string>
+    <string name="theme_swatch">%1$s %2$s</string>
+    <string name="theme_background_hex">Фон HEX</string>
+    <string name="theme_accent_hex">Подсветка HEX</string>
     <string name="theme_hex_error">Введи шесть шестнадцатеричных символов, например C6FF4D.</string>
-    <string name="theme_dark_base">Тёмная основа</string>
     <string name="theme_preview">Предпросмотр</string>
     <string name="theme_save">Сохранить тему</string>
     <string name="theme_reset">Сбросить</string>

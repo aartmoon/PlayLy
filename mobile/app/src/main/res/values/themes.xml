@@ -1,0 +1,5 @@
+<resources>
+    <style name="Theme.PlayLy" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#10110F</item>
+    </style>
+</resources>

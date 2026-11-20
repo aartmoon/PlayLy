@@ -18,4 +18,4 @@
 - Запуск из каталога использует `publication.versionId`, из проекта — выбранный `versionId`. Новая генерация создаёт новую версию. Опубликованная версия меняется по действию владельца.
 - Отправка промпта требует `Idempotency-Key`. Прогресс читается через `GET /generations/{generationId}` до `SUCCEEDED` или `FAILED`. Готовая версия приходит в `resultVersionId`.
 
-[Контракт Core API](../OpenApi.yml) · [Требования к плееру](game-generation.md#10-запуск-в-android-webview)
+[Контракт Core API](../../OpenApi.yml) · [Требования к плееру](../../docs/game-generation.md#10-запуск-в-android-webview) · [Архитектура Android](architecture.md) · [Правила UI](ui.md)

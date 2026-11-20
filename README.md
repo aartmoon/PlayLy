@@ -97,7 +97,7 @@ Core Service является владельцем основной базы д�
 
 Мобильный клиент содержит интерфейс на Jetpack Compose и игровой экран Android WebView с Phaser.
 
-[Экраны Android MVP](docs/mobile-screens.md)
+[Экраны Android MVP](mobile/docs/screens.md) · [Архитектура Android](mobile/docs/architecture.md) · [Правила UI](mobile/docs/ui.md)
 
 Основные компоненты:
 - Авторизация и профиль.
@@ -126,6 +126,7 @@ Core Service является владельцем основной базы д�
 | Сборка и тесты игр | TypeScript, Vite и Playwright / Chromium в локальном Docker runner |
 | Объектное хранилище | RustFS (S3-compatible API) |
 | Android | Kotlin, Jetpack Compose |
+| Архитектура Android | Однонаправленный поток данных: Elm / MVI / MVVM; DI — Dagger 2; [подробности](mobile/docs/architecture.md) |
 | Игровой движок | Phaser + заготовки @playly/game-kit, Android WebView (TODO реализации) |
 | Сборка | Gradle |
 | Контейнеризация | Docker, Docker Compose |
@@ -348,7 +349,7 @@ AI может читать разрешённую библиотеку и исх
 
 | Каталог | Что есть сейчас |
 |---|---|
-| `mobile/` | Android-приложение с одним экраном на Kotlin и Jetpack Compose |
+| `mobile/` | Compose-каркас Android с каталогом, созданием игр, профилем и настройками темы |
 | `backend/` | Core Service на Java 25 и Spring Boot 4.1 с REST API, PostgreSQL, Kafka и RustFS |
 | `ai/` | Java 25, каркас AI-воркера и локальные команды `planGame` и `generateGame` |
 | `compose.yaml` | Traefik, Core, AI, PostgreSQL, Redis, Kafka в режиме KRaft, RustFS и Langfuse с локальными томами |
@@ -394,7 +395,7 @@ Core использует AWS SDK for Java v2 с S3 API RustFS. Внутренн
 
 Консоль RustFS доступна на `http://localhost:9001`, API — на `http://localhost:9000`. Учётные данные для локальной разработки заданы в `.env`. Команда `docker compose down` остановит стенд и сохранит данные в томах.
 
-Для Android откройте `mobile/` в Android Studio с JDK 17, Gradle Wrapper 9.6.1 и Android SDK 36. Из терминала в корне репозитория можно собрать приложение командой `./mobile/gradlew -p mobile :app:assembleDebug` с теми же версиями JDK и Gradle.
+Для Android откройте `mobile/` в Android Studio 2026.1.2 или совместимой более новой версии с JDK 17, Gradle Wrapper 9.6.1 и Android SDK 36. Проект использует Android Gradle Plugin 9.3.1 — максимальную версию, поддерживаемую Studio 2026.1.2; при обновлении AGP проверяйте совместимость с IDE. Из терминала в корне репозитория можно собрать приложение командой `./mobile/gradlew -p mobile :app:assembleDebug` с теми же версиями JDK и Gradle.
 
 Core подключается к Redis по адресу `redis:6379` внутри Docker. Пароль задаётся в `.env` через `REDIS_PASSWORD`. Redis Langfuse работает отдельно.
 

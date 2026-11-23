@@ -45,15 +45,18 @@ jobs:
         with:
           source: .
           files: compose.yaml
-          targets: core,ai
+          targets: core,ai,rusta
           load: true
           set: |
             core.tags=playly-core
             ai.tags=playly-ai
+            rusta.tags=playly-rusta
             core.cache-from=type=gha,scope=playly-core-smoke
             core.cache-to=type=gha,scope=playly-core-smoke,mode=max
             ai.cache-from=type=gha,scope=playly-ai-smoke
             ai.cache-to=type=gha,scope=playly-ai-smoke,mode=max
+            rusta.cache-from=type=gha,scope=playly-rusta-smoke
+            rusta.cache-to=type=gha,scope=playly-rusta-smoke,mode=max
       - run: |
           docker compose up -d --no-build --wait --wait-timeout 240 traefik core ai langfuse-worker
           docker compose run --rm --no-deps storage-init
@@ -72,13 +75,28 @@ jobs:
           second=$(curl "${args[@]}" "$endpoint" | jq -er .id)
           test "$first" = "$second"
           curl -fsS -H "Authorization: Bearer $access" "$api/generations/$first" | jq -e '.status == "QUEUED"'
+          kafka_cli() {
+            local command=$1
+            shift
+            docker run --rm -i --network "${COMPOSE_PROJECT_NAME}_generation" \
+              --entrypoint "/opt/kafka/bin/kafka-console-$command.sh" apache/kafka:4.1.2 \
+              --bootstrap-server rusta:9092 "$@"
+          }
+          request=$(kafka_cli consumer --topic game.generation.request --from-beginning \
+            --group playly-ci --consumer-property group.protocol=classic --max-messages 1 --timeout-ms 30000 \
+            --property print.key=true --property 'key.separator=|')
+          test "${request%%|*}" = "$first"
+          jq -e --arg job "$first" --arg game "$game_id" \
+            '.schemaVersion == 1 and .generationId == $job and .gameId == $game and .prompt == "Create a game"' \
+            <<< "${request#*|}"
           event_id=$(cat /proc/sys/kernel/random/uuid)
           result=$(jq -cn --arg event "$event_id" --arg job "$first" --arg game "$game_id" \
             --arg time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             '{eventId:$event,schemaVersion:1,generationId:$job,gameId:$game,occurredAt:$time,type:"FAILED",error:{code:"UNSUPPORTED_GAME_REQUEST",message:"unsupported"}}')
-          printf '%s|%s\n' "$first" "$result" | docker compose exec -T kafka /opt/kafka/bin/kafka-console-producer.sh \
-            --bootstrap-server kafka:9092 --topic game.generation.result --property parse.key=true --property 'key.separator=|'
-          for attempt in {1..20}; do
+          printf '%s|%s\n' "$first" "$result" | kafka_cli producer --topic game.generation.result \
+            --producer-property acks=all --producer-property enable.idempotence=true \
+            --property parse.key=true --property 'key.separator=|'
+          for _ in {1..20}; do
             job=$(curl -fsS -H "Authorization: Bearer $access" "$api/generations/$first")
             if jq -e '.status == "FAILED" and .error.code == "UNSUPPORTED_GAME_REQUEST"' <<< "$job"; then
               break

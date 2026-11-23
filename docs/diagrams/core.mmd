@@ -9,8 +9,8 @@ flowchart TD
         storage["Storage Integration · пакеты / ссылки / очистка"]
     end
     db[("PostgreSQL · пользователи / игры / версии / задания / Outbox / события")]
-    request["Kafka · game.generation.request"]
-    result["Kafka · game.generation.result"]
+    request["Rusta · game.generation.request"]
+    result["Rusta · game.generation.result"]
     rustfs[("RustFS · playly-games")]
 
     api --> auth

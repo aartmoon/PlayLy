@@ -18,7 +18,7 @@ services:
       PLAYLY_DB_URL: jdbc:postgresql://postgres:5432/playly
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-playly-local}
       PLAYLY_JWT_SECRET: ${PLAYLY_JWT_SECRET:-playly-local-only-change-this-secret-before-deploying}
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_BOOTSTRAP_SERVERS: rusta:9092
       S3_ENDPOINT: http://rustfs:9000
       S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:${RUSTFS_API_PORT:-9000}}
       S3_GAME_BUCKET: ${S3_GAME_BUCKET:-playly-games}
@@ -30,7 +30,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      kafka:
+      rusta:
         condition: service_healthy
       storage-init:
         condition: service_completed_successfully
@@ -78,27 +78,18 @@ services:
       - redis-data:/data
     networks: [data]
 
-  kafka:
-    image: apache/kafka:4.1.2
+  rusta:
+    build:
+      context: https://github.com/aartmoon/Rusta.git#b92529c857eb7e4ec0b331bc4f3d5f4fb3d2d8e7
     environment:
-      KAFKA_NODE_ID: 1
-      KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      RUSTA_ADVERTISED: rusta:9092
     healthcheck:
-      test: ["CMD", "/opt/kafka/bin/kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
-      interval: 5s
-      timeout: 10s
-      retries: 20
+      test: ["CMD", "/usr/local/bin/rusta", "healthcheck"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
     volumes:
-      - kafka-data:/var/lib/kafka/data
+      - rusta-data:/var/lib/rusta
     networks: [generation]
 
   rustfs:
@@ -251,7 +242,7 @@ networks:
 volumes:
   postgres-data:
   redis-data:
-  kafka-data:
+  rusta-data:
   rustfs-data:
   langfuse-postgres-data:
   langfuse-clickhouse-data:

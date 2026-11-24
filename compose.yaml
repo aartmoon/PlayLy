@@ -19,6 +19,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-playly-local}
       PLAYLY_JWT_SECRET: ${PLAYLY_JWT_SECRET:-playly-local-only-change-this-secret-before-deploying}
       KAFKA_BOOTSTRAP_SERVERS: rusta:9092
+      PLAYLY_VALIDATION_KEY: ${PLAYLY_VALIDATION_KEY:-}
       S3_ENDPOINT: http://rustfs:9000
       S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:${RUSTFS_API_PORT:-9000}}
       S3_GAME_BUCKET: ${S3_GAME_BUCKET:-playly-games}
@@ -39,14 +40,42 @@ services:
     networks: [edge, data, generation]
 
   ai:
-    build: ./ai
+    build:
+      context: .
+      dockerfile: ai/Dockerfile
     environment:
+      PLAYLY_GENERATION_ENABLED: ${PLAYLY_GENERATION_ENABLED:-false}
+      KAFKA_BOOTSTRAP_SERVERS: rusta:9092
+      S3_ENDPOINT: http://rustfs:9000
+      S3_GAME_BUCKET: ${S3_GAME_BUCKET:-playly-games}
+      PLAYLY_S3_ACCESS_KEY: ${PLAYLY_AI_S3_ACCESS_KEY:-${RUSTFS_ACCESS_KEY:-playly}}
+      PLAYLY_S3_SECRET_KEY: ${PLAYLY_AI_S3_SECRET_KEY:-${RUSTFS_SECRET_KEY:-playly-local}}
+      PLAYLY_VALIDATION_KEY: ${PLAYLY_VALIDATION_KEY:-}
+      PLAYLY_RUNNER_URL: ${PLAYLY_RUNNER_URL:-}
+      PLAYLY_RUNNER_TOKEN: ${PLAYLY_RUNNER_TOKEN:-}
+      PLAYLY_LLM_URL: ${PLAYLY_LLM_URL:-}
+      PLAYLY_LLM_MODEL: ${PLAYLY_LLM_MODEL:-}
+      PLAYLY_LLM_API_KEY: ${PLAYLY_LLM_API_KEY:-}
+      PLAYLY_LLM_TIMEOUT_SECONDS: ${PLAYLY_LLM_TIMEOUT_SECONDS:-90}
+      PLAYLY_LLM_ALLOW_PRIVATE_HTTP: ${PLAYLY_LLM_ALLOW_PRIVATE_HTTP:-false}
+      PLAYLY_LLM_STRUCTURED_OUTPUT: ${PLAYLY_LLM_STRUCTURED_OUTPUT:-false}
+      PLAYLY_LLM_REASONING_EFFORT: ${PLAYLY_LLM_REASONING_EFFORT:-}
+      PLAYLY_JUDGE_URL: ${PLAYLY_JUDGE_URL:-}
+      PLAYLY_JUDGE_MODEL: ${PLAYLY_JUDGE_MODEL:-}
+      PLAYLY_JUDGE_API_KEY: ${PLAYLY_JUDGE_API_KEY:-}
+      PLAYLY_JUDGE_TIMEOUT_SECONDS: ${PLAYLY_JUDGE_TIMEOUT_SECONDS:-45}
+      PLAYLY_JUDGE_ALLOW_PRIVATE_HTTP: ${PLAYLY_JUDGE_ALLOW_PRIVATE_HTTP:-false}
+      PLAYLY_JUDGE_STRUCTURED_OUTPUT: ${PLAYLY_JUDGE_STRUCTURED_OUTPUT:-false}
       LANGFUSE_BASE_URL: http://langfuse-web:3000
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-playly-local}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-playly-local}
     depends_on:
+      core:
+        condition: service_started
       langfuse-web:
         condition: service_healthy
+    extra_hosts:
+      - host.docker.internal:host-gateway
     networks: [generation, observability]
 
   postgres:

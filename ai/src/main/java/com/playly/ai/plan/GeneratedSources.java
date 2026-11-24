@@ -24,7 +24,20 @@ record GeneratedSources(List<SourceFile> files, boolean done, String remaining) 
     record SourceFile(String path, String content) {}
 
     static GeneratedSources parse(String response) {
-        if (bytes(response) > 384 * 1024) {
+        return parse(response, 384 * 1024);
+    }
+
+    static List<SourceFile> parseArchive(String archive) {
+        var parsed = parse("{\"files\":" + archive + ",\"done\":true,\"remaining\":\"\"}", RunnerServer.MAX_INPUT + 64);
+        var indexed = new LinkedHashMap<String, SourceFile>();
+        for (var file : parsed.files()) indexed.put(file.path(), file);
+        if (!indexed.containsKey(ENTRY_POINT)) throw invalid("missing src/main.ts");
+        validateProject(indexed);
+        return parsed.files();
+    }
+
+    private static GeneratedSources parse(String response, int limit) {
+        if (bytes(response) > limit) {
             throw invalid("response exceeds the size limit");
         }
         JsonElement value;

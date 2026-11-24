@@ -44,7 +44,7 @@ fun PlayLyApp(model: PlayLyViewModel) {
         Scaffold(
             topBar = { AppBar(state.overlay, send) },
             bottomBar = {
-                if (state.overlay !in listOf(Overlay.APPEARANCE, Overlay.AUTH)) {
+                if (state.overlay !in listOf(Overlay.APPEARANCE, Overlay.AUTH, Overlay.PLAYER)) {
                     AppNavigation(state.tab) { send(Message.Select(it)) }
                 }
             },
@@ -55,6 +55,7 @@ fun PlayLyApp(model: PlayLyViewModel) {
                     Overlay.APPEARANCE -> AppearanceScreen(state.draftAppearance, send)
                     Overlay.AUTH -> AuthScreen(state, send)
                     Overlay.DETAILS -> state.details?.let { GameDetailsScreen(it, state.profile, send) }
+                    Overlay.PLAYER -> state.player?.let { PlayerScreen(it, send) }
                     Overlay.GENERATION -> state.generation?.let { GenerationScreen(it, send) }
                     null -> when (state.tab) {
                         Tab.CATALOG -> CatalogScreen(state, send)
@@ -80,6 +81,7 @@ fun PlayLyApp(model: PlayLyViewModel) {
 private fun AppBar(overlay: Overlay?, send: (Message) -> Unit) {
     val title = when (overlay) {
         Overlay.APPEARANCE -> R.string.appearance
+        Overlay.PLAYER -> R.string.play
         Overlay.AUTH -> R.string.account
         Overlay.DETAILS -> R.string.game
         Overlay.GENERATION -> R.string.generation_result

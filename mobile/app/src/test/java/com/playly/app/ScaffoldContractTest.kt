@@ -2,6 +2,7 @@ package com.playly.app
 
 import com.playly.app.data.GameCardData
 import com.playly.app.data.GenerationStatus
+import com.playly.app.data.LocalGame
 import com.playly.app.data.Page
 import com.playly.app.data.PlayerProfile
 import com.playly.app.generated.infrastructure.Serializer
@@ -9,11 +10,14 @@ import com.playly.app.ui.AppState
 import com.playly.app.ui.Command
 import com.playly.app.ui.Editor
 import com.playly.app.ui.Message
+import com.playly.app.ui.Overlay
+import com.playly.app.ui.PlayRequest
 import com.playly.app.ui.update
 import com.squareup.moshi.adapter
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import java.io.File
 import java.util.UUID
 
 class ScaffoldContractTest {
@@ -62,5 +66,19 @@ class ScaffoldContractTest {
         val retry = update(failed, Message.Submit(UUID.randomUUID())).commands.single() as Command.SendPrompt
         assertEquals(gameId, retry.editor.gameId)
         assertEquals(originalKey, retry.editor.key)
+    }
+
+    @Test
+    fun playerLoadIsDiscardedAfterReturningToSourceScreen() {
+        val request = PlayRequest(UUID.randomUUID(), UUID.randomUUID())
+        val open = update(AppState(overlay = Overlay.DETAILS), Message.Play(request))
+        assertEquals(Overlay.PLAYER, open.state.overlay)
+        assertEquals(Command.LoadGame(request, false), open.commands.single())
+
+        val close = update(open.state, Message.Back)
+        assertEquals(Overlay.DETAILS, close.state.overlay)
+        assertEquals(Command.CancelGameLoad, close.commands.single())
+        val late = Message.GameReady(request, LocalGame(File("cache"), emptyMap()))
+        assertEquals(close.state, update(close.state, late).state)
     }
 }

@@ -21,7 +21,7 @@ class GenerationRequests {
     String encode(Generation created, String gameSpecVersion, String runtimeVersion, String baseManifestKey) {
         var event = new HashMap<String, Object>();
         event.put("eventId", UUID.randomUUID());
-        event.put("schemaVersion", 1);
+        event.put("schemaVersion", "2.0".equals(gameSpecVersion) ? 2 : 1);
         event.put("generationId", created.id());
         event.put("gameId", created.gameId());
         event.put("occurredAt", created.createdAt().toInstant().toString());

@@ -25,7 +25,13 @@ import java.util.UUID;
 public class GameStorage {
     public record Reference(String bucket, String key) {}
     public record StoredFile(String path, String bucket, String key, String mediaType, Long sizeBytes, String sha256) {}
-    public record Manifest(String gameSpecVersion, String runtimeVersion, StoredFile gameSpec, List<StoredFile> assets) {}
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public record Manifest(String gameSpecVersion, String runtimeVersion, StoredFile gameSpec, List<StoredFile> assets,
+                           StoredFile sourceArchive, StoredFile validationReport, String reportSignature) {
+        public Manifest(String gameSpecVersion, String runtimeVersion, StoredFile gameSpec, List<StoredFile> assets) {
+            this(gameSpecVersion, runtimeVersion, gameSpec, assets, null, null, null);
+        }
+    }
     public record PackageFile(String path, String url, String mediaType, long sizeBytes, String sha256) {}
     public record GamePackage(UUID gameId, UUID versionId, String gameSpecVersion, String runtimeVersion,
                        Instant expiresAt, PackageFile gameSpec, List<PackageFile> assets) {}

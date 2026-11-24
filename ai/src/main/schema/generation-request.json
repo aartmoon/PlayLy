@@ -20,7 +20,8 @@
       "format": "uuid"
     },
     "schemaVersion": {
-      "type": "integer"
+      "type": "integer",
+      "enum": [1, 2]
     },
     "generationId": {
       "type": "string",

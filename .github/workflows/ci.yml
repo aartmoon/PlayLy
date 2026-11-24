@@ -37,6 +37,7 @@ jobs:
     runs-on: ubuntu-26.04
     env:
       COMPOSE_PROJECT_NAME: playly
+      PLAYLY_VALIDATION_KEY: ci-fixture-validation-key-for-playly
     steps:
       - uses: actions/checkout@v5
       - run: docker compose config --quiet
@@ -87,12 +88,12 @@ jobs:
             --property print.key=true --property 'key.separator=|')
           test "${request%%|*}" = "$first"
           jq -e --arg job "$first" --arg game "$game_id" \
-            '.schemaVersion == 1 and .generationId == $job and .gameId == $game and .prompt == "Create a game"' \
+            '.schemaVersion == 2 and .generationId == $job and .gameId == $game and .prompt == "Create a game"' \
             <<< "${request#*|}"
           event_id=$(cat /proc/sys/kernel/random/uuid)
           result=$(jq -cn --arg event "$event_id" --arg job "$first" --arg game "$game_id" \
             --arg time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            '{eventId:$event,schemaVersion:1,generationId:$job,gameId:$game,occurredAt:$time,type:"FAILED",error:{code:"UNSUPPORTED_GAME_REQUEST",message:"unsupported"}}')
+            '{eventId:$event,schemaVersion:2,generationId:$job,gameId:$game,occurredAt:$time,type:"FAILED",error:{code:"UNSUPPORTED_GAME_REQUEST",message:"unsupported"}}')
           printf '%s|%s\n' "$first" "$result" | kafka_cli producer --topic game.generation.result \
             --producer-property acks=all --producer-property enable.idempotence=true \
             --property parse.key=true --property 'key.separator=|'
@@ -108,6 +109,27 @@ jobs:
           curl -fsS -H 'Content-Type: application/json' -d "$refresh_body" "$api/auth/refresh" | jq -e '.refreshToken | length > 0'
           test "$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d "$refresh_body" "$api/auth/refresh")" = 401
           test "$(docker inspect --format '{{.State.Running}}' "$(docker compose ps -aq ai)")" = true
+      - name: Exercise generation and publication
+        env:
+          PLAYLY_GENERATION_ENABLED: "true"
+          PLAYLY_RUNNER_TOKEN: ci-fixture-runner-token-for-playly
+          PLAYLY_FIXTURE_BIND: "0.0.0.0"
+          PLAYLY_RUNNER_URL: http://host.docker.internal:18091/build
+          PLAYLY_LLM_URL: http://host.docker.internal:18091/generate
+          PLAYLY_LLM_MODEL: fixture
+          PLAYLY_LLM_ALLOW_PRIVATE_HTTP: "true"
+          PLAYLY_JUDGE_URL: http://host.docker.internal:18091/judge
+          PLAYLY_JUDGE_MODEL: fixture
+          PLAYLY_JUDGE_ALLOW_PRIVATE_HTTP: "true"
+        run: |
+          docker build -t playly-game-runner -f game-template/runner/Dockerfile game-template
+          fixtures=$(mktemp -d)
+          python3 infra/generation/fixture.py prepare "$fixtures"
+          python3 infra/generation/fixture.py serve "$fixtures" &
+          fixture_pid=$!
+          trap 'kill "$fixture_pid"' EXIT
+          docker compose up -d --no-deps --force-recreate ai
+          python3 infra/generation/smoke.py
       - if: failure()
         run: |
           docker compose logs
@@ -131,7 +153,7 @@ jobs:
           - context: .
             dockerfile: backend/Dockerfile
             image: playly-core
-          - context: ./ai
+          - context: .
             dockerfile: ai/Dockerfile
             image: playly-ai
     steps:

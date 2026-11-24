@@ -66,7 +66,8 @@ class GenerationService {
         if (admissions.activeJobs(owner) >= userLimit) {
             throw new ApiProblem(HttpStatus.TOO_MANY_REQUESTS, "GENERATION_LIMIT_EXCEEDED", "Too many active generations", 3);
         }
-        String baseKey = baseVersion == null ? null : versions.baseManifestKey(game, baseVersion);
+        String baseKey = baseVersion == null ? null : "2.0".equals(gameSpecVersion)
+                ? versions.editableManifestKey(game, baseVersion) : versions.baseManifestKey(game, baseVersion);
         UUID id = UUID.randomUUID();
         var created = admissions.insert(id, game, key, prompt, baseVersion, gameSpecVersion, runtimeVersion, deadline);
         admissions.enqueue(id, requests.encode(created, gameSpecVersion, runtimeVersion, baseKey));

@@ -28,9 +28,12 @@ public class PackageVerifier {
     private final GameStorage storage;
     private final ObjectMapper json;
 
-    PackageVerifier(GameStorage storage, ObjectMapper json) {
+    private final WebPackageAdmission web;
+
+    PackageVerifier(GameStorage storage, ObjectMapper json, WebPackageAdmission web) {
         this.storage = storage;
         this.json = json;
+        this.web = web;
     }
 
     public Manifest verify(UUID generation, Reference reference, String schema, String runtime, Instant deadline) {
@@ -68,8 +71,13 @@ public class PackageVerifier {
             remaining -= file.sizeBytes();
         }
         if (manifest.gameSpec().sizeBytes() > MAX_SPEC_SIZE) throw new InvalidPackage();
-        for (var file : files) {
-            verifyFile(file, file == manifest.gameSpec(), deadline);
+        if ("2.0".equals(schema)) {
+            web.check(manifest, prefix, files, deadline);
+        } else {
+            verifyFile(manifest.gameSpec(), true, deadline);
+        }
+        for (var file : manifest.assets()) {
+            verifyFile(file, false, deadline);
         }
         return manifest;
     }

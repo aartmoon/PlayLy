@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["allowed", "score"],
+  "properties": {
+    "allowed": {"type": "boolean"},
+    "score": {"type": "number", "minimum": 0, "maximum": 1}
+  }
+}

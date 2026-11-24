@@ -34,15 +34,15 @@ final class ChatCompletionsClient {
     private final String reasoningEffort;
 
     ChatCompletionsClient(HttpClient http, URI endpoint, String model, String apiKey) {
-        this(http, endpoint, model, apiKey, Duration.ofSeconds(DEFAULT_TIMEOUT_SECONDS), null, null);
+        this(http, endpoint, model, apiKey, Duration.ofSeconds(DEFAULT_TIMEOUT_SECONDS), null, null, false);
     }
 
     private ChatCompletionsClient(HttpClient http, URI endpoint, String model, String apiKey,
-                                  Duration requestTimeout, ResponseFormat responseFormat, String reasoningEffort) {
+                                  Duration requestTimeout, ResponseFormat responseFormat, String reasoningEffort, boolean localHttp) {
         var host = endpoint.getHost();
         if (host == null || endpoint.getUserInfo() != null || endpoint.getFragment() != null
                 || !("https".equalsIgnoreCase(endpoint.getScheme())
-                || ("http".equalsIgnoreCase(endpoint.getScheme()) && LOOPBACK_HOSTS.contains(host)))) {
+                || ("http".equalsIgnoreCase(endpoint.getScheme()) && (LOOPBACK_HOSTS.contains(host) || (localHttp && apiKey.isBlank()))))) {
             throw new IllegalArgumentException("PLAYLY_LLM_URL must be an HTTPS URL or a local loopback HTTP URL.");
         }
         this.http = http;
@@ -56,23 +56,29 @@ final class ChatCompletionsClient {
 
     static ChatCompletionsClient fromEnvironment(HttpClient http, String command, String schemaResource)
             throws IOException {
-        var url = requiredEnv("PLAYLY_LLM_URL", command);
+        return fromEnvironment(http, command, schemaResource, "PLAYLY_LLM");
+    }
+
+    static ChatCompletionsClient fromEnvironment(HttpClient http, String command, String schemaResource, String prefix)
+            throws IOException {
+        var url = requiredEnv(prefix + "_URL", command);
         URI endpoint;
         try {
             endpoint = URI.create(url);
         } catch (IllegalArgumentException exception) {
             throw new IllegalArgumentException("PLAYLY_LLM_URL is not a valid URL.");
         }
-        var reasoningEffort = System.getenv("PLAYLY_LLM_REASONING_EFFORT");
-        return new ChatCompletionsClient(http, endpoint, requiredEnv("PLAYLY_LLM_MODEL", command),
-                System.getenv().getOrDefault("PLAYLY_LLM_API_KEY", ""), timeoutFromEnvironment(),
-                responseFormatFromEnvironment(command, schemaResource),
-                reasoningEffort == null || reasoningEffort.isBlank() ? null : reasoningEffort);
+        var reasoningEffort = System.getenv(prefix + "_REASONING_EFFORT");
+        return new ChatCompletionsClient(http, endpoint, requiredEnv(prefix + "_MODEL", command),
+                System.getenv().getOrDefault(prefix + "_API_KEY", ""), timeoutFromEnvironment(prefix),
+                responseFormatFromEnvironment(prefix, command, schemaResource),
+                reasoningEffort == null || reasoningEffort.isBlank() ? null : reasoningEffort,
+                Boolean.parseBoolean(System.getenv(prefix + "_ALLOW_PRIVATE_HTTP")));
     }
 
-    private static ResponseFormat responseFormatFromEnvironment(String command, String schemaResource)
+    private static ResponseFormat responseFormatFromEnvironment(String prefix, String command, String schemaResource)
             throws IOException {
-        if (!Boolean.parseBoolean(System.getenv("PLAYLY_LLM_STRUCTURED_OUTPUT"))) {
+        if (!Boolean.parseBoolean(System.getenv(prefix + "_STRUCTURED_OUTPUT"))) {
             return null;
         }
         try (var stream = ChatCompletionsClient.class.getResourceAsStream(schemaResource)) {
@@ -84,8 +90,8 @@ final class ChatCompletionsClient {
         }
     }
 
-    private static Duration timeoutFromEnvironment() {
-        var value = System.getenv("PLAYLY_LLM_TIMEOUT_SECONDS");
+    private static Duration timeoutFromEnvironment(String prefix) {
+        var value = System.getenv(prefix + "_TIMEOUT_SECONDS");
         if (value == null || value.isBlank()) {
             return Duration.ofSeconds(DEFAULT_TIMEOUT_SECONDS);
         }

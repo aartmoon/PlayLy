@@ -38,8 +38,9 @@ playly:
   generation:
     deadline: PT10M
     active-per-user: 3
-    game-spec-version: '1.0'
-    runtime-version: '1.0.0'
+    game-spec-version: '2.0'
+    runtime-version: '2.0.0'
+    validation-key: ${PLAYLY_VALIDATION_KEY:}
   storage:
     endpoint: ${S3_ENDPOINT:http://localhost:9000}
     public-endpoint: ${S3_PUBLIC_ENDPOINT:http://localhost:9000}

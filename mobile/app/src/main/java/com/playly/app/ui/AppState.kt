@@ -5,13 +5,14 @@ import com.playly.app.data.Appearance
 import com.playly.app.data.GenerationStatus
 import com.playly.app.data.GenerationTicket
 import com.playly.app.data.GameCardData
+import com.playly.app.data.LocalGame
 import com.playly.app.data.Page
 import com.playly.app.data.PlayerProfile
 import com.playly.app.data.ProjectVersion
 import java.util.UUID
 
 enum class Tab { CATALOG, CREATE, GAMES, PROFILE }
-enum class Overlay { APPEARANCE, DETAILS, GENERATION, AUTH }
+enum class Overlay { APPEARANCE, DETAILS, GENERATION, AUTH, PLAYER }
 
 data class Feed(
     val games: List<GameCardData> = emptyList(),
@@ -47,6 +48,9 @@ data class Details(
     val error: Int? = null,
 )
 
+data class PlayRequest(val game: UUID, val version: UUID)
+data class PlayerUi(val request: PlayRequest, val from: Overlay?, val packageFiles: LocalGame? = null, val error: Int? = null)
+
 data class AppState(
     val tab: Tab = Tab.CATALOG,
     val overlay: Overlay? = null,
@@ -62,6 +66,7 @@ data class AppState(
     val editor: Editor = Editor(),
     val generation: GenerationUi? = null,
     val details: Details? = null,
+    val player: PlayerUi? = null,
     val notice: Int? = null,
 )
 
@@ -102,10 +107,15 @@ sealed interface Message {
     data class Publish(val version: UUID) : Message
     data class Rate(val score: Int) : Message
     data object DismissNotice : Message
-    data object ShowPlayerUnavailable : Message
+    data class Play(val request: PlayRequest) : Message
+    data class GameReady(val request: PlayRequest, val files: LocalGame) : Message
+    data class GameLoadFailed(val request: PlayRequest, val error: Int) : Message
+    data object RetryGame : Message
 }
 
 sealed interface Command {
+    data class LoadGame(val request: PlayRequest, val signedIn: Boolean) : Command
+    data object CancelGameLoad : Command
     data class FetchFeed(val mine: Boolean, val query: String = "", val cursor: String? = null, val debounce: Boolean = false) : Command
     data class StoreAppearance(val value: Appearance) : Command
     data object FetchProfile : Command
@@ -141,7 +151,9 @@ fun update(state: AppState, message: Message): Transition = with(state) {
                 transition(selected.copy(myGames = myGames.copy(loading = true)), Command.FetchFeed(true))
             } else transition(selected)
         }
-        Message.Back -> transition(copy(overlay = if (overlay == Overlay.AUTH) authReturn else null,
+        Message.Back -> if (overlay == Overlay.PLAYER) {
+            transition(copy(overlay = player?.from, player = null), Command.CancelGameLoad)
+        } else transition(copy(overlay = if (overlay == Overlay.AUTH) authReturn else null,
             authReturn = null, profileError = null))
         is Message.Search -> transition(
             copy(query = message.query, catalog = Feed(loading = true)),
@@ -255,6 +267,17 @@ fun update(state: AppState, message: Message): Transition = with(state) {
             else -> transition(copy(details = details.copy(busy = true, error = null)), Command.Rate(details.game, profile.id, message.score))
         }
         Message.DismissNotice -> transition(copy(notice = null))
-        Message.ShowPlayerUnavailable -> transition(copy(notice = R.string.player_unavailable))
+        is Message.Play -> transition(
+            copy(overlay = Overlay.PLAYER, player = PlayerUi(message.request, overlay)),
+            Command.LoadGame(message.request, profile != null),
+        )
+        is Message.GameReady -> if (player?.request != message.request) transition()
+            else transition(copy(player = player.copy(packageFiles = message.files, error = null)))
+        is Message.GameLoadFailed -> if (player?.request != message.request) transition()
+            else transition(copy(player = player.copy(packageFiles = null, error = message.error)))
+        Message.RetryGame -> if (player == null) transition() else transition(
+            copy(player = player.copy(packageFiles = null, error = null)),
+            Command.LoadGame(player.request, profile != null),
+        )
     }
 }

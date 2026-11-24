@@ -34,7 +34,7 @@ public final class GameGenerationCli {
         }
     }
 
-    private static Map<String, String> examples() throws IOException {
+    static Map<String, String> examples() throws IOException {
         var result = new LinkedHashMap<String, String>();
         for (String file : List.of("CoinScene.ts", "art.ts")) {
             try (var stream = GameGenerationCli.class.getResourceAsStream("/game/examples/" + file)) {

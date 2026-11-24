@@ -135,6 +135,10 @@ class CoreRepository @Inject constructor(private val settings: LocalSettings) {
         ProjectVersion(value.id, value.number)
     }
 
+    fun gamePackage(game: UUID, version: UUID, signedIn: Boolean): GamePackage =
+        if (signedIn) authorized { transport.data(versions.getGamePackageRequestConfig(game, version), it) }
+        else transport.data(versions.getGamePackageRequestConfig(game, version))
+
     private fun User.asProfile() = PlayerProfile(id, displayName, email)
 
     fun publish(id: UUID, version: UUID) {

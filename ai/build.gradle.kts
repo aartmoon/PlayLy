@@ -26,6 +26,14 @@ jsonSchema2Pojo {
 
 dependencies {
     implementation("com.google.code.gson:gson:2.13.2")
+    implementation("org.apache.kafka:kafka-clients:4.2.2")
+    runtimeOnly("org.slf4j:slf4j-simple:1.7.36")
+    implementation(platform("software.amazon.awssdk:bom:2.39.6"))
+    implementation("software.amazon.awssdk:s3") {
+        exclude(group = "software.amazon.awssdk", module = "apache-client")
+        exclude(group = "software.amazon.awssdk", module = "netty-nio-client")
+    }
+    implementation("software.amazon.awssdk:url-connection-client")
     implementation(platform("io.opentelemetry:opentelemetry-bom:1.62.0"))
     implementation("io.opentelemetry:opentelemetry-sdk")
     implementation("io.opentelemetry:opentelemetry-exporter-otlp")
@@ -47,6 +55,13 @@ tasks.register<JavaExec>("generateGame") {
     description = "Generate, build and smoke-test a Phaser game."
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("com.playly.ai.plan.GameGenerationCli")
+}
+
+tasks.register<JavaExec>("serveRunner") {
+    group = "application"
+    description = "Serve isolated builds on a trusted Docker host with gVisor or Kata."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.playly.ai.plan.RunnerServer")
 }
 
 tasks.processResources {

@@ -58,7 +58,7 @@ class GenerationKafka {
         var event = parse(record);
         var target = results.target(event.generationId(), event.eventId()).orElse(null);
         if (target == null) return;
-        if (!target.gameId().equals(event.gameId())) throw new InvalidEvent();
+        if (!target.gameId().equals(event.gameId()) || event.schemaVersion() != ("2.0".equals(target.gameSpecVersion()) ? 2 : 1)) throw new InvalidEvent();
         if (target.finishedAt() != null) return;
 
         GameStorage.Manifest manifest = null;
@@ -89,7 +89,7 @@ class GenerationKafka {
         } catch (JacksonException error) {
             throw new InvalidEvent();
         }
-        if (event == null || event.eventId() == null || !Integer.valueOf(1).equals(event.schemaVersion())
+        if (event == null || event.eventId() == null || (event.schemaVersion() == null || (event.schemaVersion() != 1 && event.schemaVersion() != 2))
                 || event.generationId() == null || !event.generationId().toString().equals(record.key())
                 || event.gameId() == null || event.occurredAt() == null || event.type() == null
                 || (event.manifest() != null) != (event.type() == Type.SUCCEEDED)

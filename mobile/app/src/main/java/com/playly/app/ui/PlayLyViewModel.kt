@@ -8,6 +8,9 @@ import com.playly.app.data.CoreError
 import com.playly.app.data.CoreNotConfigured
 import com.playly.app.data.CoreRepository
 import com.playly.app.data.GameCardData
+import com.playly.app.data.GamePackages
+import com.playly.app.data.InvalidGamePackage
+import com.playly.app.data.UnsupportedGamePackage
 import com.playly.app.data.GenerationStatus
 import com.playly.app.data.GenerationTicket
 import com.playly.app.data.LocalSettings
@@ -26,11 +29,12 @@ import javax.inject.Inject
 class PlayLyViewModel @Inject constructor(
     private val repository: CoreRepository,
     private val settings: LocalSettings,
+    private val packages: GamePackages,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(AppState(appearance = settings.readAppearance()))
     val state = mutableState.asStateFlow()
 
-    private enum class Work { CATALOG, MY_GAMES, PROFILE, SUBMIT, POLL, DETAILS }
+    private enum class Work { CATALOG, MY_GAMES, PROFILE, SUBMIT, POLL, DETAILS, PLAYER }
     private val jobs = mutableMapOf<Work, Job>()
 
     init {
@@ -46,6 +50,12 @@ class PlayLyViewModel @Inject constructor(
 
     private fun execute(command: Command) {
         when (command) {
+            is Command.LoadGame -> runWork(Work.PLAYER, { Message.GameLoadFailed(command.request, it) }) {
+                val (game, version) = command.request
+                val files = network { packages.load(repository.gamePackage(game, version, command.signedIn), game, version) }
+                dispatch(Message.GameReady(command.request, files))
+            }
+            Command.CancelGameLoad -> jobs[Work.PLAYER]?.cancel()
             is Command.StoreAppearance -> settings.writeAppearance(command.value)
             is Command.FetchFeed -> runWork(
                 if (command.mine) Work.MY_GAMES else Work.CATALOG,
@@ -148,6 +158,8 @@ class PlayLyViewModel @Inject constructor(
     private suspend fun <T> network(block: () -> T): T = withContext(Dispatchers.IO) { block() }
 
     private fun Exception.toMessage(): Int = when (this) {
+        is UnsupportedGamePackage -> R.string.player_unsupported
+        is InvalidGamePackage -> R.string.player_invalid
         is CoreNotConfigured -> R.string.core_not_configured
         is CoreError -> when (status) {
             400 -> R.string.invalid_input

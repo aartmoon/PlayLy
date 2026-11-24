@@ -115,20 +115,20 @@ internal fun GenerationScreen(generation: GenerationUi, send: (Message) -> Unit)
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        if (ready) {
+        if (ready && generation.versionId != null) {
+            val version = generation.versionId
+            val play = { send(Message.Play(PlayRequest(generation.ticket.gameId, version))) }
             Box(Modifier.fillMaxWidth().aspectRatio(1.6f).clip(MaterialTheme.shapes.medium), contentAlignment = Alignment.Center) {
                 CoverArt(generation.ticket.gameId.hashCode(), Modifier.matchParentSize())
-                FilledTonalIconButton(onClick = { send(Message.ShowPlayerUnavailable) }, modifier = Modifier.size(Space.touch)) {
+                FilledTonalIconButton(onClick = play, modifier = Modifier.size(Space.touch)) {
                     Icon(Icons.Outlined.PlayArrow, stringResource(R.string.play))
                 }
             }
-            PrimaryButton(R.string.play) { send(Message.ShowPlayerUnavailable) }
-            generation.versionId?.let { version ->
-                OutlinedButton(
-                    onClick = { send(Message.EditVersion(generation.ticket.gameId, generation.ticket.title, version)) },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = Space.touch),
-                ) { Text(stringResource(R.string.edit_game)) }
-            }
+            PrimaryButton(R.string.play, action = play)
+            OutlinedButton(
+                onClick = { send(Message.EditVersion(generation.ticket.gameId, generation.ticket.title, version)) },
+                modifier = Modifier.fillMaxWidth().heightIn(min = Space.touch),
+            ) { Text(stringResource(R.string.edit_game)) }
         } else if (failed) {
             ErrorText(generation.error ?: R.string.generation_failed_detail)
             PrimaryButton(R.string.return_to_editor) { send(Message.EditFailedGeneration) }

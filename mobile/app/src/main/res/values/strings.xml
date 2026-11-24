@@ -51,7 +51,10 @@
     <string name="return_to_editor">Вернуться к запросу</string>
     <string name="go_to_games">Перейти в «Мои игры»</string>
     <string name="play">Играть</string>
-    <string name="player_unavailable">Запуск игровых пакетов в этой версии приложения пока недоступен.</string>
+    <string name="player_unsupported">Эта версия игрового пакета не поддерживается.</string>
+    <string name="player_invalid">Не удалось проверить целостность игрового пакета.</string>
+    <string name="player_failed">Игра остановилась. Попробуйте перезапустить её.</string>
+    <string name="player_restart">Перезапустить игру</string>
     <string name="account_subtitle">Войди, чтобы создавать игры и ставить оценки.</string>
     <string name="display_name">Имя</string>
     <string name="email">Электронная почта</string>

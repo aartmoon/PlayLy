@@ -14,6 +14,11 @@ const mime = new Map([
   ['.js', 'text/javascript; charset=utf-8'],
 ])
 const maxArtifactSize = 16 * 1024 * 1024
+const blockedBrowserNames = new Set([
+  'fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'sendBeacon', 'RTCPeerConnection',
+  'Worker', 'SharedWorker', 'serviceWorker', 'eval', 'Function', 'importScripts', 'postMessage',
+  'localStorage', 'sessionStorage', 'indexedDB', 'cookie', 'clipboard', 'mediaDevices', 'geolocation',
+])
 
 class RejectedGame extends Error {
   constructor(code, message) {
@@ -32,6 +37,11 @@ function verifyImports(files) {
       reject('Triple-slash references are disabled.')
     }
     function visit(node) {
+      const property = ts.isElementAccessExpression(node) && ts.isStringLiteral(node.argumentExpression)
+        ? node.argumentExpression.text : ''
+      if ((ts.isIdentifier(node) && blockedBrowserNames.has(node.text)) || blockedBrowserNames.has(property)) {
+        reject('A browser API outside the game contract is disabled.')
+      }
       if (ts.isImportEqualsDeclaration(node) || (ts.isMetaProperty(node) && node.keywordToken === ts.SyntaxKind.ImportKeyword)) {
         reject('Use standard static imports.')
       }
@@ -109,31 +119,17 @@ async function testGame() {
   let browser
   try {
     browser = await chromium.launch({ timeout: 10_000 })
-    const page = await browser.newPage({ ...devices['Pixel 7'], serviceWorkers: 'block' })
     const origin = 'http://127.0.0.1:' + server.address().port
-    const errors = []
-    const addError = message => { if (errors.length < 10) errors.push(message.slice(0, 450)) }
-    page.on('pageerror', error => addError(error.message))
-    page.on('crash', () => addError('Browser page crashed.'))
-    page.on('console', entry => { if (entry.type() === 'error') addError(entry.text()) })
-    page.on('response', response => {
-      if (response.status() >= 400) addError('HTTP ' + response.status() + ' ' + new URL(response.url()).pathname)
-    })
-    await page.route('**/*', route => {
-      if (new URL(route.request().url()).origin === origin) return route.continue()
-      addError('Game requested a resource outside its package.')
-      return route.abort()
-    })
-    try {
-      await page.goto(origin, { waitUntil: 'load', timeout: 8000 })
-      const canvas = page.locator('#game canvas').first()
-      await canvas.waitFor({ state: 'visible', timeout: 8000 })
-      await canvas.tap({ timeout: 2500 })
-      await page.waitForTimeout(400)
-    } catch (error) {
-      addError(error.message)
+    const portrait = devices['Pixel 7']
+    const landscape = devices['Pixel 7 landscape']
+    for (const device of [portrait, landscape]) {
+      const page = await browser.newPage({ ...device, serviceWorkers: 'block' })
+      try {
+        await exercise(page, origin, device.viewport)
+      } finally {
+        await page.close()
+      }
     }
-    if (errors.length) throw new RejectedGame(21, errors.join('\n'))
   } finally {
     try {
       await browser?.close()
@@ -141,6 +137,40 @@ async function testGame() {
       server.close()
     }
   }
+}
+
+async function exercise(page, origin, viewport) {
+  const errors = []
+  const addError = message => { if (errors.length < 10) errors.push(message.slice(0, 450)) }
+  page.on('pageerror', error => addError(error.message))
+  page.on('crash', () => addError('Browser page crashed.'))
+  page.on('console', entry => { if (entry.type() === 'error') addError(entry.text()) })
+  page.on('response', response => {
+    if (response.status() >= 400) addError('HTTP ' + response.status() + ' ' + new URL(response.url()).pathname)
+  })
+  await page.route('**/*', route => {
+    if (new URL(route.request().url()).origin === origin) return route.continue()
+    addError('Game requested a resource outside its package.')
+    return route.abort()
+  })
+  try {
+    await page.goto(origin + '/index.html', { waitUntil: 'load', timeout: 8000 })
+    const canvas = page.locator('#game canvas').first()
+    await canvas.waitFor({ state: 'visible', timeout: 8000 })
+    const bounds = await canvas.boundingBox()
+    if (!bounds || bounds.width <= 1 || bounds.height <= 1 || bounds.x < -1 || bounds.y < -1
+        || bounds.x + bounds.width > viewport.width + 1 || bounds.y + bounds.height > viewport.height + 1) {
+      throw new Error('The game canvas does not fit the mobile viewport.')
+    }
+    await canvas.tap({ timeout: 2500 })
+    await page.waitForTimeout(15_000)
+    if (!await canvas.isVisible() || page.url() !== origin + '/index.html') {
+      throw new Error('The game canvas disappeared or the game navigated away.')
+    }
+  } catch (error) {
+    addError(error.message)
+  }
+  if (errors.length) throw new RejectedGame(21, errors.join('\n'))
 }
 
 async function pack() {
@@ -169,7 +199,14 @@ async function pack() {
 }
 
 try {
-  const files = JSON.parse(await readFile('/input.json', 'utf8'))
+  const chunks = []
+  let size = 0
+  for await (const chunk of process.stdin) {
+    size += chunk.length
+    if (size > 2 * 1024 * 1024) throw new Error('Runner input is too large.')
+    chunks.push(chunk)
+  }
+  const files = JSON.parse(Buffer.concat(chunks).toString('utf8'))
   await build(files)
   await testGame()
   process.stdout.write(JSON.stringify(await pack()))

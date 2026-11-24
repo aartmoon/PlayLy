@@ -94,7 +94,9 @@ internal fun GameDetailsScreen(details: Details, profile: PlayerProfile?, send: 
     ) {
         GameCard(game.title, game.author.displayName, game.id.hashCode(), game.rating.average, game.rating.count)
         if (game.description.isNotBlank()) Text(game.description, style = MaterialTheme.typography.bodyLarge)
-        if (game.publication != null) PrimaryButton(R.string.play) { send(Message.ShowPlayerUnavailable) }
+        game.publication?.let { publication ->
+            PrimaryButton(R.string.play) { send(Message.Play(PlayRequest(game.id, publication.versionId))) }
+        }
         if (game.publication != null && !owner) {
             if (profile == null) {
                 OutlinedButton(onClick = { send(Message.OpenAuth) }) { Text(stringResource(R.string.sign_in_to_rate)) }
@@ -117,6 +119,9 @@ internal fun GameDetailsScreen(details: Details, profile: PlayerProfile?, send: 
                     Column(Modifier.padding(Space.md)) {
                         Text(stringResource(R.string.version_number, version.number), style = MaterialTheme.typography.titleMedium)
                         if (game.publication?.versionId == version.id) Text(stringResource(R.string.published))
+                        TextButton(onClick = { send(Message.Play(PlayRequest(game.id, version.id))) }) {
+                            Text(stringResource(R.string.play))
+                        }
                         Row(horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
                             TextButton(onClick = { send(Message.EditVersion(game.id, game.title, version.id)) }, enabled = !details.busy) {
                                 Text(stringResource(R.string.edit_game))

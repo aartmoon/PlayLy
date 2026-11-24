@@ -22,8 +22,14 @@ final class DockerGameRunner {
             Pattern.compile("(?:[a-zA-Z0-9_-]+/)*[a-zA-Z0-9_-][a-zA-Z0-9_.-]*");
     private static final Gson JSON = new Gson();
     private final Path output;
+    private final String runtime;
 
     DockerGameRunner(Path output) throws IOException, InterruptedException {
+        this(output, null);
+    }
+
+    DockerGameRunner(Path output, String runtime) throws IOException, InterruptedException {
+        this.runtime = runtime;
         this.output = output.toAbsolutePath().normalize();
         if (Files.exists(this.output)) {
             throw new IOException("Output directory already exists: " + this.output);
@@ -48,9 +54,6 @@ final class DockerGameRunner {
             var result = temporary.resolve("result.json");
             var log = temporary.resolve("runner.log");
             Files.writeString(input, JSON.toJson(sources));
-            if (!input.toFile().setReadable(true, false)) {
-                throw new IOException("Could not make the runner input readable inside the container.");
-            }
             runContainer(input, result, log);
             return writePackage(result);
         } finally {
@@ -58,15 +61,17 @@ final class DockerGameRunner {
         }
     }
 
-    private static void runContainer(Path input, Path result, Path log) throws IOException, InterruptedException {
+    private void runContainer(Path input, Path result, Path log) throws IOException, InterruptedException {
         String name = "playly-runner-" + UUID.randomUUID();
-        var command = new ProcessBuilder("docker", "run", "--rm", "--pull=never", "--name", name,
+        var args = new java.util.ArrayList<>(List.of("docker", "run", "--rm", "--pull=never", "--name", name, "-i",
                 "--network=none", "--read-only", "--cap-drop=ALL", "--security-opt=no-new-privileges:true",
                 "--cpus=1", "--memory=1g", "--memory-swap=1g", "--pids-limit=128", "--shm-size=128m",
                 "--tmpfs", "/work:rw,nosuid,nodev,size=256m,mode=1777",
-                "--tmpfs", "/tmp:rw,nosuid,nodev,size=128m,mode=1777",
-                "--mount", "type=bind,source=" + input.toRealPath() + ",target=/input.json,readonly", IMAGE);
-        var process = command.redirectOutput(result.toFile()).redirectError(log.toFile()).start();
+                "--tmpfs", "/tmp:rw,nosuid,nodev,size=128m,mode=1777"));
+        if (runtime != null) args.add("--runtime=" + runtime);
+        args.add(IMAGE);
+        var process = new ProcessBuilder(args).redirectInput(input.toFile()).redirectOutput(result.toFile())
+                .redirectError(log.toFile()).start();
         try {
             if (!process.waitFor(150, TimeUnit.SECONDS)) {
                 throw new IOException("Game sandbox exceeded its time limit.");
@@ -150,7 +155,7 @@ final class DockerGameRunner {
         }
     }
 
-    private static void deleteTree(Path root) throws IOException {
+    static void deleteTree(Path root) throws IOException {
         if (Files.exists(root)) {
             try (var paths = Files.walk(root)) {
                 for (var path : paths.sorted(Comparator.reverseOrder()).toList()) {

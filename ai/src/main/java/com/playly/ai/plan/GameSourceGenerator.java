@@ -60,8 +60,14 @@ final class GameSourceGenerator {
 
     <T> T generate(String prompt, Map<String, String> examples, Build<T> build)
             throws IOException, InterruptedException {
+        return generate(prompt, examples, List.of(), build);
+    }
+
+    <T> T generate(String prompt, Map<String, String> examples, List<GeneratedSources.SourceFile> base, Build<T> build)
+            throws IOException, InterruptedException {
         GamePlanner.validatePrompt(prompt);
         var files = new LinkedHashMap<String, GeneratedSources.SourceFile>();
+        for (var file : base) files.put(file.path(), file);
         String remaining = "";
         String feedback = "";
         for (int call = 1; call <= MAX_GENERATION_CALLS; call++) {
@@ -82,7 +88,7 @@ final class GameSourceGenerator {
             remaining = batch.remaining();
             feedback = "";
         }
-        throw new IOException("Game generation did not complete within five model calls. " + feedback);
+        throw new RejectedBuild("Game generation did not complete within five model calls. " + feedback);
     }
 
     private <T> T buildWithRepairs(String prompt, Map<String, GeneratedSources.SourceFile> files, Build<T> build)
@@ -116,7 +122,7 @@ final class GameSourceGenerator {
                 diagnostics = rejected.getMessage();
             }
         }
-        throw new IOException("Game failed after two repair calls.\n" + diagnostics);
+        throw new RejectedBuild("Game failed after two repair calls.\n" + diagnostics);
     }
 
     private static void apply(Map<String, GeneratedSources.SourceFile> files, GeneratedSources batch) {

@@ -1178,11 +1178,11 @@ components:
           format: uuid
         gameSpecVersion:
           type: string
-          example: '1.0'
+          example: '2.0'
         runtimeVersion:
           type: string
           description: Минимальная версия runtime (SemVer); тот же major и версия клиента не ниже указанной
-          example: '1.0.0'
+          example: '2.0.0'
         expiresAt:
           type: string
           format: date-time

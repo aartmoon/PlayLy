@@ -49,4 +49,12 @@ public class VersionService {
     public String baseManifestKey(UUID game, UUID version) {
         return versions.storedVersion(game, version).manifestKey();
     }
+
+    public String editableManifestKey(UUID game, UUID version) {
+        var value = versions.storedVersion(game, version);
+        if (!"2.0".equals(value.version().gameSpecVersion())) {
+            throw com.playly.core.web.ApiProblem.conflict("CONFLICT", "Base game format does not support editing");
+        }
+        return value.manifestKey();
+    }
 }

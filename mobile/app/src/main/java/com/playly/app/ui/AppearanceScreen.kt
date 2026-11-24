@@ -4,10 +4,11 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material3.*
@@ -17,7 +18,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import com.playly.app.R
@@ -32,13 +35,17 @@ internal fun AppearanceScreen(value: Appearance, send: (Message) -> Unit) {
     val background = backgroundInput.parseHexColor()
     val accent = accentInput.parseHexColor()
     val preview = value.copy(background = background ?: value.background, accent = accent ?: value.accent)
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Space.lg),
-        verticalArrangement = Arrangement.spacedBy(Space.lg),
+    ScreenColumn(
+        footer = {
+            PrimaryButton(R.string.theme_save, enabled = value.mode != ThemeMode.CUSTOM || (background != null && accent != null)) {
+                send(Message.ChangeAppearance(preview))
+                send(Message.SaveAppearance)
+            }
+        },
     ) {
-        Text(stringResource(R.string.appearance_intro), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(stringResource(R.string.theme_mode), style = MaterialTheme.typography.titleMedium)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+        Heading(R.string.appearance, R.string.appearance_intro)
+        SectionTitle(R.string.theme_mode)
+        Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
             ThemeMode.entries.forEach { mode ->
                 val selected = value.mode == mode
                 val label = when (mode) {
@@ -46,25 +53,30 @@ internal fun AppearanceScreen(value: Appearance, send: (Message) -> Unit) {
                     ThemeMode.DARK -> R.string.theme_dark
                     ThemeMode.CUSTOM -> R.string.theme_custom
                 }
-                OutlinedCard(
-                    modifier = Modifier.weight(1f),
-                    onClick = { send(Message.ChangeAppearance(value.copy(mode = mode))) },
-                    border = BorderStroke(Space.outline, if (selected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outlineVariant),
-                    colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                Surface(
+                    shape = MaterialTheme.shapes.medium,
+                    color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
+                    contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
                 ) {
-                    Column(Modifier.fillMaxWidth().padding(top = Space.lg, bottom = Space.md),
-                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Space.sm)) {
-                        val sample = preview.copy(mode = mode)
-                        PlayLyTheme(sample) {
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .selectable(selected, role = Role.RadioButton) { send(Message.ChangeAppearance(value.copy(mode = mode))) }
+                            .padding(Space.md),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Space.md),
+                    ) {
+                        PlayLyTheme(preview.copy(mode = mode)) {
                             Surface(
                                 color = MaterialTheme.colorScheme.background,
                                 shape = MaterialTheme.shapes.small,
                                 border = BorderStroke(Space.outline, MaterialTheme.colorScheme.outlineVariant),
                             ) {
-                                Box(Modifier.size(Space.touch), contentAlignment = Alignment.Center) { PlayLyMark() }
+                                Box(Modifier.size(Space.xxl), contentAlignment = Alignment.Center) {
+                                    PlayLyMark(Modifier.padding(Space.xs))
+                                }
                             }
                         }
-                        Text(stringResource(label), style = MaterialTheme.typography.labelLarge)
+                        Text(stringResource(label), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                         RadioButton(selected, onClick = null)
                     }
                 }
@@ -86,7 +98,7 @@ internal fun AppearanceScreen(value: Appearance, send: (Message) -> Unit) {
                 onInput = { accentInput = it },
             )
         }
-        Text(stringResource(R.string.theme_preview), style = MaterialTheme.typography.titleMedium)
+        SectionTitle(R.string.theme_preview)
         PlayLyTheme(preview) {
             OutlinedCard(colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.background)) {
                 Column(Modifier.padding(Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
@@ -109,10 +121,6 @@ internal fun AppearanceScreen(value: Appearance, send: (Message) -> Unit) {
                     }
                 }
             }
-        }
-        PrimaryButton(R.string.theme_save, enabled = value.mode != ThemeMode.CUSTOM || (background != null && accent != null)) {
-            send(Message.ChangeAppearance(preview))
-            send(Message.SaveAppearance)
         }
         OutlinedButton(
             onClick = {
@@ -137,7 +145,10 @@ private fun ColorSetting(title: Int, hexLabel: Int, colors: List<Int>, input: St
                 val label = stringResource(R.string.theme_swatch, titleText, color.asHex())
                 IconButton(
                     onClick = { onInput(color.asHex()) },
-                    modifier = Modifier.size(Space.touch).semantics { contentDescription = label },
+                    modifier = Modifier.size(Space.touch).semantics {
+                        contentDescription = label
+                        this.selected = selected == color
+                    },
                 ) {
                     val swatch = Color(color)
                     Box(

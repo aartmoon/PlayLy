@@ -11,7 +11,7 @@
     <string name="back">Назад</string>
     <string name="close">Закрыть</string>
     <string name="catalog_subtitle">Играй в игры, созданные сообществом PlayLy</string>
-    <string name="search_games">Найти игру по названию</string>
+    <string name="search_games">Найти игру</string>
     <string name="retry">Повторить</string>
     <string name="catalog_empty">В каталоге пока нет опубликованных игр.</string>
     <string name="search_empty">По этому запросу ничего не найдено.</string>
@@ -61,7 +61,7 @@
     <string name="password">Пароль</string>
     <string name="have_account">Уже есть аккаунт? Войти</string>
     <string name="need_account">Нет аккаунта? Зарегистрироваться</string>
-    <string name="guest">Ты смотришь приложение как гость.</string>
+    <string name="guest">Гостевой режим</string>
     <string name="save_name">Сохранить имя</string>
     <string name="sign_out">Выйти</string>
     <string name="sign_in_to_rate">Войти, чтобы оценить</string>
@@ -70,7 +70,7 @@
     <string name="no_versions">Готовых версий пока нет.</string>
     <string name="version_number">Версия %1$d</string>
     <string name="publish">Опубликовать</string>
-    <string name="appearance_intro">Настрой тему приложения. Игровые сцены и обложки останутся прежними.</string>
+    <string name="appearance_intro">Выбери тему PlayLy или собери свою палитру.</string>
     <string name="theme_mode">Тема интерфейса</string>
     <string name="theme_light">Светлая</string>
     <string name="theme_dark">Тёмная</string>
@@ -94,4 +94,11 @@
     <string name="server_error">Сервер не смог выполнить запрос.</string>
     <string name="connection_error">Не удалось связаться с сервером. Проверь подключение.</string>
     <string name="unexpected_error">Не удалось обработать ответ. Попробуй ещё раз.</string>
+    <string name="clear_search">Очистить поиск</string>
+    <string name="loading">Загрузка…</string>
+    <string name="player_loading">Загружаем игровой пакет…</string>
+    <string name="edit_subtitle">Опиши, что изменить в выбранной версии.</string>
+    <string name="prompt_label">Запрос</string>
+    <string name="registration_title">Регистрация</string>
+    <string name="rating_score">Оценить на %1$d из 5</string>
 </resources>

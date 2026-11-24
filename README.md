@@ -399,7 +399,7 @@ Core использует AWS SDK for Java v2 с S3 API RustFS. Внутренн
 
 Консоль RustFS доступна на `http://localhost:9001`, API — на `http://localhost:9000`. Учётные данные для локальной разработки заданы в `.env`. Команда `docker compose down` остановит стенд и сохранит данные в томах.
 
-Для Android откройте `mobile/` в Android Studio 2026.1.2 или совместимой более новой версии с JDK 17, Gradle Wrapper 9.6.1 и Android SDK 36. Проект использует Android Gradle Plugin 9.3.1 — максимальную версию, поддерживаемую Studio 2026.1.2; при обновлении AGP проверяйте совместимость с IDE. Из терминала в корне репозитория можно собрать приложение командой `./mobile/gradlew -p mobile :app:assembleDebug` с теми же версиями JDK и Gradle.
+Для Android откройте `mobile/` в Android Studio 2026.1.2 или совместимой более новой версии с JDK 17, Gradle Wrapper 9.6.1 и Android SDK 37. Проект использует Android Gradle Plugin 9.3.1 — максимальную версию, поддерживаемую Studio 2026.1.2; при обновлении AGP проверяйте совместимость с IDE. Из терминала в корне репозитория можно собрать приложение командой `./mobile/gradlew -p mobile :app:assembleDebug` с теми же версиями JDK и Gradle.
 
 Core подключается к Redis по адресу `redis:6379` внутри Docker. Пароль задаётся в `.env` через `REDIS_PASSWORD`. Redis Langfuse работает отдельно.
 
@@ -419,7 +419,7 @@ AI ждёт готовности Langfuse и отправляет проверо
 
 Gradle генерирует исходники перед компиляцией и сохраняет их в `build/generated/` соответствующего модуля. Меняйте файлы контрактов. Для Android передавайте клиенту абсолютный URL сервера с префиксом `/api/v1`.
 
-Локальные тесты для Core и AI (JDK 25) и для Android (JDK 17, Gradle Wrapper 9.6.1 и Android SDK 36):
+Локальные тесты для Core и AI (JDK 25) и для Android (JDK 17, Gradle Wrapper 9.6.1 и Android SDK 37):
 
 ```sh
 ./backend/gradlew -p backend test

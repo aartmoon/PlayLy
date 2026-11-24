@@ -12,10 +12,7 @@ import android.webkit.WebViewClient
 import android.webkit.WebViewRenderProcess
 import android.webkit.WebViewRenderProcessClient
 import androidx.annotation.RequiresApi
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -41,19 +38,21 @@ internal fun PlayerScreen(player: PlayerUi, send: (Message) -> Unit) {
     val files = player.packageFiles
     var restart by remember(files) { mutableIntStateOf(0) }
     var crashed by remember(files, restart) { mutableStateOf(false) }
-    when {
-        player.error != null -> Column(
-            Modifier.padding(Space.lg), verticalArrangement = Arrangement.spacedBy(Space.md),
-        ) {
-            ErrorText(player.error)
-            if (player.error != R.string.player_unsupported) PrimaryButton(R.string.retry) { send(Message.RetryGame) }
+    if (player.error == null && !crashed && files != null) {
+        key(files, restart) { GameWebView(files) { crashed = true } }
+    } else {
+        ScreenColumn {
+            when {
+                player.error == R.string.player_unsupported -> StatePanel(player.error, error = true)
+                player.error != null -> StatePanel(player.error, error = true, actionLabel = R.string.retry) {
+                    send(Message.RetryGame)
+                }
+                crashed -> StatePanel(R.string.player_failed, error = true, actionLabel = R.string.player_restart) {
+                    restart++
+                }
+                else -> BusyState(R.string.player_loading)
+            }
         }
-        crashed -> Column(Modifier.padding(Space.lg), verticalArrangement = Arrangement.spacedBy(Space.md)) {
-            ErrorText(R.string.player_failed)
-            PrimaryButton(R.string.player_restart) { restart++ }
-        }
-        files == null -> LoadingIndicator()
-        else -> key(files, restart) { GameWebView(files) { crashed = true } }
     }
 }
 

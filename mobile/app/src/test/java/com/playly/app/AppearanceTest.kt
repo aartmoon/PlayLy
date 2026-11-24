@@ -17,14 +17,28 @@ import org.junit.Test
 
 class AppearanceTest {
     @Test
-    fun fixedThemesUseOppositeNeutralColors() {
+    fun fixedThemesUseBrandColorsWithReadableText() {
         val customColors = Appearance(background = 0xFF213244.toInt(), accent = 0xFFFFA068.toInt())
         val light = playLyColorScheme(customColors.copy(mode = ThemeMode.LIGHT))
         val dark = playLyColorScheme(customColors.copy(mode = ThemeMode.DARK))
-        assertEquals(Color.White, light.background)
-        assertEquals(Color.Black, light.primary)
-        assertEquals(Color.Black, dark.background)
-        assertEquals(Color.White, dark.primary)
+        assertEquals(0xFFF8F6EF.toInt(), light.background.toArgb())
+        assertEquals(0xFF4D338B.toInt(), light.primary.toArgb())
+        assertEquals(0xFF151421.toInt(), dark.background.toArgb())
+        assertEquals(0xFFD8FA76.toInt(), dark.primary.toArgb())
+        for (scheme in listOf(light, dark)) {
+            val roles = listOf(
+                scheme.onBackground to scheme.background,
+                scheme.onSurface to scheme.surfaceContainer,
+                scheme.onSurfaceVariant to scheme.surfaceContainerHigh,
+                scheme.onPrimary to scheme.primary,
+                scheme.onPrimaryContainer to scheme.primaryContainer,
+                scheme.onSecondaryFixed to scheme.secondaryFixed,
+                scheme.onErrorContainer to scheme.errorContainer,
+            )
+            for ((foreground, background) in roles) {
+                assertTrue(contrastRatio(foreground, background) >= 4.5f)
+            }
+        }
     }
 
     @Test

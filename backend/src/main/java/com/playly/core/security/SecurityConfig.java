@@ -76,7 +76,7 @@ public class SecurityConfig {
                                 "/api/v1/auth/refresh", "/api/v1/auth/logout").permitAll()
                         .requestMatchers(HttpMethod.GET, "/actuator/health", "/api/v1/catalog/games",
                                 "/api/v1/games/{gameId}", "/api/v1/games/{gameId}/versions/{versionId}",
-                                "/api/v1/games/{gameId}/versions/{versionId}/package").permitAll()
+                                "/api/v1/games/{gameId}/versions/{versionId}/package", "/api/v1/game-files").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(errors -> errors.authenticationEntryPoint(unauthorized))
                 .oauth2ResourceServer(oauth -> oauth.authenticationEntryPoint(unauthorized).jwt(jwt -> {}))

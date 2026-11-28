@@ -25,7 +25,8 @@ class GameStorageTest {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.start();
         storage = new GameStorage("http://127.0.0.1:" + server.getAddress().getPort(),
-                "https://storage.example.com", "playly", "playly-local", "playly-games",
+                "https://example.com/playly/api/v1", "test-jwt-secret-with-at-least-32-bytes",
+                "playly", "playly-local", "playly-games",
                 Duration.ofMinutes(5), Duration.ofHours(24), Duration.ofMinutes(10));
     }
 
@@ -36,7 +37,7 @@ class GameStorageTest {
     }
 
     @Test
-    void signsForPublicHostWithPathStyleAndNoAdditionalHeaders() {
+    void signsForThePublicCorePathAndDownloadsOnlyWithAValidToken() throws Exception {
         var file = new GameStorage.StoredFile("game.json", "playly-games", "generations/a/game +1.json",
                 "application/json", 2L, "hash");
         var manifest = new GameStorage.Manifest("1.0", "1.0.0", file, List.of());
@@ -44,11 +45,24 @@ class GameStorageTest {
         var result = storage.sign(UUID.randomUUID(), UUID.randomUUID(), manifest);
         var url = URI.create(result.gameSpec().url());
 
-        assertEquals("storage.example.com", url.getHost());
-        assertEquals("/playly-games/generations/a/game +1.json", url.getPath());
-        assertTrue(url.getRawQuery().contains("X-Amz-SignedHeaders=host"));
-        assertTrue(url.getRawQuery().contains("X-Amz-Expires=300"));
-        assertTrue(url.getRawQuery().contains("X-Amz-Signature="));
+        assertEquals("example.com", url.getHost());
+        assertEquals("/playly/api/v1/game-files", url.getPath());
+        String token = url.getRawQuery().substring("token=".length());
+        server.createContext("/playly-games/", exchange -> {
+            assertEquals("/playly-games/generations/a/game +1.json", exchange.getRequestURI().getPath());
+            exchange.sendResponseHeaders(200, 2);
+            try (var output = exchange.getResponseBody()) {
+                output.write("{}".getBytes(StandardCharsets.UTF_8));
+            }
+        });
+        try (var object = storage.download(token)) {
+            assertEquals("{}", new String(object.readAllBytes(), StandardCharsets.UTF_8));
+        }
+        assertThrows(com.playly.core.web.ApiProblem.class, () -> storage.download("0" + token));
+
+        var links = new GameFileLinks("https://example.com/playly/api/v1", "test-jwt-secret-with-at-least-32-bytes");
+        assertThrows(com.playly.core.web.ApiProblem.class, () -> links.objectKey(token, result.expiresAt()));
+        assertEquals(file.key(), links.objectKey(token, result.expiresAt().minusSeconds(1)));
     }
 
     @Test

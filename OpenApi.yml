@@ -542,8 +542,8 @@ paths:
       summary: Получить ссылки на дескриптор и файлы игры для запуска
       description: |
         Доступ как для getGameVersion. Возвращает временные HTTPS GET URL
-        к game.json и ресурсам в RustFS. Клиент скачивает файлы напрямую,
-        проверяет SHA-256 и совместимость формата. В целевом формате v2
+        к game.json и ресурсам через Core. Клиент скачивает файлы и проверяет
+        SHA-256 и совместимость формата. В целевом формате v2
         game.json указывает локальный index.html; assets включают HTML/JS/CSS
         и ресурсы Phaser для запуска в ограниченном Android WebView.
         Исходники и отчёт валидации не входят в публичный assets.
@@ -564,6 +564,40 @@ paths:
                 $ref: '#/components/schemas/GamePackage'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /game-files:
+    get:
+      tags: [Versions]
+      operationId: downloadGameFile
+      security: []
+      summary: Скачать файл по временной ссылке из пакета игры
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Временная подпись файла из ссылки в пакете игры.
+      responses:
+        '200':
+          description: Байты файла из RustFS
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                enum: [no-store]
+            Content-Disposition:
+              schema:
+                type: string
+                enum: [attachment]
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
         '404':
           $ref: '#/components/responses/NotFound'
         default:

@@ -60,16 +60,15 @@ def package(game, version, token=None):
     for entry in [result["gameSpec"], *result["assets"]]:
         assert not ({"bucket", "key"} & entry.keys())
         url = entry["url"]
-        headers = {}
         parsed = urllib.parse.urlsplit(url)
-        if os.environ.get("PLAYLY_SMOKE_STORAGE_HOST"):
-            headers["Host"] = parsed.netloc
-            url = parsed._replace(netloc=os.environ["PLAYLY_SMOKE_STORAGE_HOST"]).geturl()
-        with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=20) as response:
+        assert parsed._replace(query="").geturl() == API + "/game-files"
+        with urllib.request.urlopen(url, timeout=20) as response:
+            assert response.headers.get_content_type() == "application/octet-stream"
+            assert response.headers["Content-Disposition"] == "attachment"
+            assert response.headers["Cache-Control"] == "no-store"
             body = response.read()
         assert hashlib.sha256(body).hexdigest() == entry["sha256"]
         assert len(body) == entry["sizeBytes"] and entry["path"] not in paths
-        assert "/public/" in parsed.path
         paths.add(entry["path"])
     assert {"game.json", "index.html"} <= paths
     return result
@@ -87,6 +86,9 @@ def main():
     first_version = first["resultVersionId"]
     expect_error(404, f"/games/{game}/versions/{first_version}/package")
     old = package(game, first_version, token)
+    query = urllib.parse.urlsplit(old["gameSpec"]["url"]).query
+    expect_error(404, "/game-files")
+    expect_error(404, "/game-files?" + query.replace("token=", "token=0", 1))
     second = generation(game, token, EDIT, first_version)
     assert second["status"] == "SUCCEEDED", second
     second_version = second["resultVersionId"]

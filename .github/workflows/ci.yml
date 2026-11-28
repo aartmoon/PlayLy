@@ -38,6 +38,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: playly
       PLAYLY_VALIDATION_KEY: ci-fixture-validation-key-for-playly
+      PLAYLY_PUBLIC_API_URL: http://127.0.0.1:8080/api/v1
     steps:
       - uses: actions/checkout@v5
       - run: docker compose config --quiet
